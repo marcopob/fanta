@@ -37,10 +37,25 @@ type Player = {
   mv: number
   mvSource?: "fantacalcio"
   mvSeason?: string
+  officialStats?: OfficialStats
+  statsSeason?: string
   inj: boolean
   suspended?: boolean
   reason: string
   opponent: string
+}
+type OfficialStats = {
+  appearances?: number
+  mv?: number
+  fantasyAverage?: number
+  goals?: number
+  goalsConceded?: number
+  penaltiesScored?: number
+  penaltiesTaken?: number
+  penaltiesSaved?: number
+  assists?: number
+  yellowCards?: number
+  redCards?: number
 }
 type Formation = { name: string; defense: number; midfield: number; attack: number }
 type Lineup = Record<Position, Player[]>
@@ -386,6 +401,8 @@ function isStoredPlayer(value: unknown): value is Player {
     && typeof player.titolarita === "number" && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
     && (player.mvSource === undefined || player.mvSource === "fantacalcio")
     && (player.mvSeason === undefined || typeof player.mvSeason === "string")
+    && (player.officialStats === undefined || (typeof player.officialStats === "object" && player.officialStats !== null && Object.values(player.officialStats).every((stat) => stat === undefined || (typeof stat === "number" && Number.isFinite(stat)))))
+    && (player.statsSeason === undefined || typeof player.statsSeason === "string")
     && (player.suspended === undefined || typeof player.suspended === "boolean")
     && typeof player.reason === "string" && typeof player.opponent === "string"
 }
@@ -420,9 +437,22 @@ function PlayerAvatar({ player, className }: { player: Player; className: string
 
 function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
   const isRisk = player.titolarita < 60 || isUnavailable(player)
+  const officialStats = player.officialStats
+  const officialStatItems: Array<[string, number | string | undefined]> = [
+    ["Presenze", officialStats?.appearances],
+    ["Media voto", officialStats?.mv],
+    ["FantaMedia", officialStats?.fantasyAverage],
+    ["Gol", officialStats?.goals],
+    ["Assist", officialStats?.assists],
+    ["Gol subiti", officialStats?.goalsConceded],
+    ["Rigori segnati / tirati", officialStats?.penaltiesScored !== undefined && officialStats.penaltiesTaken !== undefined ? `${officialStats.penaltiesScored} / ${officialStats.penaltiesTaken}` : undefined],
+    ["Rigori parati", officialStats?.penaltiesSaved],
+    ["Ammonizioni", officialStats?.yellowCards],
+    ["Espulsioni", officialStats?.redCards],
+  ]
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
-      <section role="dialog" aria-modal="true" aria-labelledby="player-modal-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-t-[28px] border border-white/10 bg-[#151732] shadow-2xl sm:rounded-[28px]">
+      <section role="dialog" aria-modal="true" aria-labelledby="player-modal-title" onClick={(event) => event.stopPropagation()} className="max-h-[92svh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-[28px] border border-white/10 bg-[#151732] shadow-2xl sm:rounded-[28px]">
         <div className="h-1 bg-gradient-to-r from-[#ffe85e] via-orange-300 to-rose-400" />
         <div className="p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
@@ -437,13 +467,18 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
             <button type="button" onClick={onClose} aria-label="Chiudi dettagli" className="rounded-full border border-white/10 p-2 text-white/60 hover:bg-white/10"><X size={18} /></button>
           </div>
           <div className="mt-6 grid grid-cols-3 gap-2">
-            {[["Hype", `${player.hype}%`, "text-orange-200"], ["MV", player.mv.toFixed(2), "text-violet-200"], ["Titolare", `${player.titolarita}%`, "text-emerald-200"], ["Rischio", isRisk ? "ALTO" : "BASSO", isRisk ? "text-rose-200" : "text-emerald-200"]].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><div className={`mb-2 text-[13px] font-bold uppercase tracking-widest ${color}`}>{label}</div><div className="text-lg font-black">{value}</div></div>)}
+            {[["Hype", `${player.hype}%`, "text-orange-200"], ["Titolare", `${player.titolarita}%`, "text-emerald-200"], ["Rischio", isRisk ? "ALTO" : "BASSO", isRisk ? "text-rose-200" : "text-emerald-200"]].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><div className={`mb-2 text-[13px] font-bold uppercase tracking-widest ${color}`}>{label}</div><div className="text-lg font-black">{value}</div></div>)}
           </div>
+          <section className="mt-4 rounded-2xl border border-violet-200/15 bg-violet-200/[0.04] p-4" aria-label="Statistiche ufficiali Fantacalcio.it">
+            <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-[12px] font-bold uppercase tracking-widest text-violet-100">Statistiche ufficiali</h3><span className="text-[12px] text-white/40">{player.statsSeason ?? player.mvSeason ?? "Stagione corrente"}</span></div>
+            {officialStats ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{officialStatItems.map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.06] bg-black/15 p-2.5"><div className="text-[12px] leading-4 text-white/45">{label}</div><div className="mt-1 text-base font-black text-white">{typeof value === "number" ? value.toLocaleString("it-IT", { minimumFractionDigits: Number.isInteger(value) ? 0 : 1, maximumFractionDigits: 2 }) : value ?? "—"}</div></div>)}</div> : <p className="text-[13px] leading-5 text-white/45">Nessun dato caricato. Torna alla rosa e aggiorna le statistiche.</p>}
+            <a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="mt-3 inline-block text-[12px] font-bold text-violet-100/60 underline underline-offset-2 hover:text-violet-100">Fonte: Fantacalcio.it</a>
+          </section>
           <div className="mt-4 rounded-2xl border border-[#ffe85e]/10 bg-[#ffe85e]/[0.045] p-4">
             <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-[#ffe85e]"><Sparkles size={14} />Perché schierarlo</div>
             <p className="mt-2 text-sm leading-6 text-white/75">{player.reason}</p>
           </div>
-          <p className="mt-3 text-[12px] leading-5 text-white/35">La MV è aggiornata da Fantacalcio.it quando disponibile; hype, titolarità e avversario restano stime.</p>
+          <p className="mt-3 text-[12px] leading-5 text-white/35">Hype, titolarità, avversario e consiglio sono stime; i dati nella sezione viola sono quelli pubblicati da Fantacalcio.it.</p>
           <button type="button" onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e] hover:bg-yellow-200">CHIUDI <Check size={16} /></button>
         </div>
       </section>
@@ -662,7 +697,7 @@ export default function Home() {
       const result = await response.json() as {
         error?: string
         season?: string
-        ratings?: Array<{ id: string; mv?: number; appearances?: number }>
+        ratings?: Array<{ id: string; stats: OfficialStats }>
       }
 
       if (!response.ok || !result.season || !Array.isArray(result.ratings)) {
@@ -678,17 +713,19 @@ export default function Home() {
         const rating = officialRatings.get(player.id)
         if (!rating) return player
 
-        const hasOfficialRating = Number.isFinite(rating.mv) && Number.isFinite(rating.appearances) && rating.appearances! > 0
+        const hasOfficialRating = Number.isFinite(rating.stats.mv) && (rating.stats.appearances ?? 0) > 0
 
         return {
           ...player,
-          ...(hasOfficialRating ? { mv: rating.mv!, mvSource: "fantacalcio" as const, mvSeason: result.season } : {}),
+          officialStats: rating.stats,
+          statsSeason: result.season,
+          ...(hasOfficialRating ? { mv: rating.stats.mv!, mvSource: "fantacalcio" as const, mvSeason: result.season } : {}),
         }
       }))
 
-      const ratingCount = result.ratings.filter((rating) => Number.isFinite(rating.mv) && Number.isFinite(rating.appearances) && rating.appearances! > 0).length
-      const missingRatings = squad.length - ratingCount
-      setRatingNotice(`${squad.length} caricature originali già assegnate · ${ratingCount} medie voto aggiornate${missingRatings ? ` · ${missingRatings} senza media voto disponibile` : ""} · stagione ${result.season}.`)
+      const matchedCount = result.ratings.length
+      const missingRatings = squad.length - matchedCount
+      setRatingNotice(`${matchedCount} ${matchedCount === 1 ? "giocatore aggiornato" : "giocatori aggiornati"} con statistiche ufficiali${missingRatings ? ` · ${missingRatings} ${missingRatings === 1 ? "non trovato" : "non trovati"} nelle statistiche della stagione` : ""} · stagione ${result.season}.`)
     } catch {
       setRatingNotice("Recupero non riuscito. Riprova tra poco: la rosa non è stata modificata.")
     } finally {
@@ -730,7 +767,7 @@ export default function Home() {
         <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-white/55 hover:text-white sm:text-sm"><ArrowLeft size={16} /> HOME</button><FantaVibesLogo /><span className="hidden rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[13px] font-black tracking-[0.14em] text-[#ffe85e] sm:inline-flex">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[13px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[12px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[13px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[13px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[12px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[12px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[13px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[12px] leading-4 text-white/55">Caricature originali sempre disponibili; aggiorna la MV da Fantacalcio.it.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[13px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[13px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNA MV…" : "AGGIORNA MV"}</button></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[12px] leading-4 text-white/55">Recupera presenze, voti, gol, assist e bonus/malus di tutta la rosa.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[13px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[13px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNA STATISTICHE…" : "AGGIORNA STATISTICHE"}</button></div>
           {ratingNotice && <p role="status" className="mt-3 rounded-xl border border-violet-300/15 bg-violet-300/[0.05] px-4 py-3 text-[12px] leading-5 text-violet-100/80">{ratingNotice}</p>}
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-sm leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
           {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <button key={player.id} type="button" onClick={() => setSelectedPlayer(player)} aria-label={`Apri valutazione di ${player.name}`} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 text-left transition hover:border-[#ffe85e]/35 hover:bg-[#1b1e3b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffe85e] sm:p-4"><PlayerAvatar player={player} className="size-14 rounded-xl text-base" /><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-base font-black">{player.name}</h2><span className="truncate text-[13px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[13px] text-white/45"><span className={`mr-1 rounded border px-1 py-0.5 text-[12px] font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span>Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[13px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span title={player.mvSource === "fantacalcio" ? `Media voto ufficiale Fantacalcio.it · ${player.mvSeason}` : "Media voto stimata, non ancora sincronizzata"} className={`text-[13px] font-bold ${player.mvSource === "fantacalcio" ? "text-violet-200" : "text-white/45"}`}>{player.mvSource === "fantacalcio" ? "MV FC" : "MV stima"} {player.mv.toFixed(2)}</span></div></div></button>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-sm leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}

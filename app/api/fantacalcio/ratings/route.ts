@@ -7,8 +7,17 @@ type RosterPlayer = {
 type OfficialRating = {
   name: string
   team: string
-  mv?: number
   appearances?: number
+  mv?: number
+  fantasyAverage?: number
+  goals?: number
+  goalsConceded?: number
+  penaltiesScored?: number
+  penaltiesTaken?: number
+  penaltiesSaved?: number
+  assists?: number
+  yellowCards?: number
+  redCards?: number
 }
 
 const TEAM_CODES: Record<string, string> = {
@@ -29,8 +38,11 @@ const TEAM_CODES: Record<string, string> = {
   lazio: "LAZ",
   lecce: "LEC",
   milan: "MIL",
+  monza: "MON",
   napoli: "NAP",
   parma: "PAR",
+  frosinone: "FRO",
+  venezia: "VEN",
   pisa: "PIS",
   roma: "ROM",
   sassuolo: "SAS",
@@ -64,14 +76,6 @@ function decodeHtml(value: string) {
   })
 }
 
-function extractCell(row: string, className: string) {
-  const cellPattern = new RegExp(
-    `<(?:td|th)\\b[^>]*class="[^"]*\\b${className}\\b[^"]*"[^>]*>([\\s\\S]*?)<\\/(?:td|th)>`,
-    "i",
-  )
-  const content = row.match(cellPattern)?.[1]
-  return content ? decodeHtml(content.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim() : ""
-}
 
 function parseOfficialRatings(html: string): OfficialRating[] {
   const ratings: OfficialRating[] = []
@@ -82,20 +86,56 @@ function parseOfficialRatings(html: string): OfficialRating[] {
 
     const nameAttribute = attributes.match(/\bdata-filter-keywords="([^"]+)"/i)?.[1]
     const name = nameAttribute ? decodeHtml(nameAttribute).trim() : ""
-    const team = extractCell(row, "player-team").toUpperCase()
-    const appearances = Number.parseInt(extractCell(row, "player-match-playeds"), 10)
-    const mv = Number.parseFloat(extractCell(row, "player-grade-avg").replace(",", "."))
+    const team = extractColumn(row, "sq").toUpperCase()
+    const appearances = parseInteger(extractColumn(row, "pg"))
+    const mv = parseNumber(extractColumn(row, "mv"))
+    const fantasyAverage = parseNumber(extractColumn(row, "mfv"))
+    const goals = parseInteger(extractColumn(row, "gol"))
+    const goalsConceded = parseInteger(extractColumn(row, "gs"))
+    const penaltyRecord = extractColumn(row, "rig").match(/(\d+)\s*\/\s*(\d+)/)
+    const penaltiesSaved = parseInteger(extractColumn(row, "rp"))
+    const assists = parseInteger(extractColumn(row, "ass"))
+    const yellowCards = parseInteger(extractColumn(row, "amm"))
+    const redCards = parseInteger(extractColumn(row, "esp"))
+
     if (name && team) {
       ratings.push({
         name,
         team,
-        ...(Number.isFinite(appearances) ? { appearances } : {}),
-        ...(Number.isFinite(mv) ? { mv } : {}),
+        ...(appearances !== undefined ? { appearances } : {}),
+        ...(mv !== undefined ? { mv } : {}),
+        ...(fantasyAverage !== undefined ? { fantasyAverage } : {}),
+        ...(goals !== undefined ? { goals } : {}),
+        ...(goalsConceded !== undefined ? { goalsConceded } : {}),
+        ...(penaltyRecord ? { penaltiesScored: Number(penaltyRecord[1]), penaltiesTaken: Number(penaltyRecord[2]) } : {}),
+        ...(penaltiesSaved !== undefined ? { penaltiesSaved } : {}),
+        ...(assists !== undefined ? { assists } : {}),
+        ...(yellowCards !== undefined ? { yellowCards } : {}),
+        ...(redCards !== undefined ? { redCards } : {}),
       })
     }
   }
 
   return ratings
+}
+
+function extractColumn(row: string, key: string) {
+  const cellPattern = new RegExp(
+    `<(?:td|th)\\b[^>]*\\bdata-col-key="${key}"[^>]*>([\\s\\S]*?)<\\/(?:td|th)>`,
+    "i",
+  )
+  const content = row.match(cellPattern)?.[1]
+  return content ? decodeHtml(content.replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim() : ""
+}
+
+function parseNumber(value: string) {
+  const parsed = Number.parseFloat(value.replace(",", "."))
+  return Number.isFinite(parsed) ? parsed : undefined
+}
+
+function parseInteger(value: string) {
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : undefined
 }
 
 function getSeason() {
@@ -173,11 +213,8 @@ export async function POST(request: Request) {
         : candidates.length === 1 ? candidates[0] : undefined
 
       if (!matched) return []
-      return [{
-        id: player.id,
-        ...(matched.mv !== undefined ? { mv: matched.mv } : {}),
-        ...(matched.appearances !== undefined ? { appearances: matched.appearances } : {}),
-      }]
+      const { name: _name, team: _team, ...stats } = matched
+      return [{ id: player.id, stats }]
     })
 
     return Response.json({ season, sourceUrl, ratings })

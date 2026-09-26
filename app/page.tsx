@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
+import Image from "next/image"
 import { read as readWorkbook, utils as workbookUtils } from "xlsx"
 import {
   ArrowLeft,
@@ -394,16 +395,12 @@ function getTitolaritaStyle(value: number) {
 
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
   const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
-  const catalogIndex = PLAYER_DB.findIndex((catalogPlayer) => catalogPlayer.id === player.id)
-  const avatarIndex = catalogIndex >= 0
-    ? catalogIndex
-    : Array.from(player.id).reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) >>> 0, 0) % 25
-  const backgroundPosition = `${(avatarIndex % 5) * 25}% ${Math.floor(avatarIndex / 5) * 25}%`
+  const hasPortrait = PLAYER_DB.some((catalogPlayer) => catalogPlayer.id === player.id)
 
   return (
     <span className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-[#122b20] font-black text-white ${className}`} aria-hidden="true">
       <span className="absolute inset-0 flex items-center justify-center">{initials}</span>
-      <span className="absolute inset-0 bg-cover" style={{ backgroundImage: "url('/players/serie-a-caricatures.png')", backgroundSize: "500% 500%", backgroundPosition }} />
+      {hasPortrait && <Image src={`/players/avatars/${player.id}.png`} alt="" fill sizes="64px" className="scale-110 object-cover" />}
     </span>
   )
 }

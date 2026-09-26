@@ -37,7 +37,6 @@ type Player = {
   mv: number
   mvSource?: "fantacalcio"
   mvSeason?: string
-  avatarUrl?: string
   inj: boolean
   suspended?: boolean
   reason: string
@@ -383,7 +382,6 @@ function isStoredPlayer(value: unknown): value is Player {
     && typeof player.titolarita === "number" && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
     && (player.mvSource === undefined || player.mvSource === "fantacalcio")
     && (player.mvSeason === undefined || typeof player.mvSeason === "string")
-    && (player.avatarUrl === undefined || (typeof player.avatarUrl === "string" && /^https:\/\/content\.fantacalcio\.it\/web\/campioncini\/21\/card\/\d+\.png\?v=834$/.test(player.avatarUrl)))
     && (player.suspended === undefined || typeof player.suspended === "boolean")
     && typeof player.reason === "string" && typeof player.opponent === "string"
 }
@@ -396,11 +394,16 @@ function getTitolaritaStyle(value: number) {
 
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
   const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+  const catalogIndex = PLAYER_DB.findIndex((catalogPlayer) => catalogPlayer.id === player.id)
+  const avatarIndex = catalogIndex >= 0
+    ? catalogIndex
+    : Array.from(player.id).reduce((hash, character) => (hash * 31 + character.charCodeAt(0)) >>> 0, 0) % 25
+  const backgroundPosition = `${(avatarIndex % 5) * 25}% ${Math.floor(avatarIndex / 5) * 25}%`
 
   return (
     <span className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-[#122b20] font-black text-white ${className}`} aria-hidden="true">
       <span className="absolute inset-0 flex items-center justify-center">{initials}</span>
-      {player.avatarUrl && <img src={player.avatarUrl} alt="" className="absolute inset-0 size-full object-cover object-top" onError={(event) => { event.currentTarget.style.display = "none" }} />}
+      <span className="absolute inset-0 bg-cover" style={{ backgroundImage: "url('/players/serie-a-caricatures.png')", backgroundSize: "500% 500%", backgroundPosition }} />
     </span>
   )
 }
@@ -508,9 +511,10 @@ export default function Home() {
         if (typeof value.teamName === "string") setTeamName(value.teamName)
         if (saved && Array.isArray(value.players)) {
           const storedPlayers = value.players.filter(isStoredPlayer).map((player) => {
-            const cleanPlayer = { ...player } as Player & { xg?: number; xa?: number }
+            const cleanPlayer = { ...player } as Player & { xg?: number; xa?: number; avatarUrl?: string }
             delete cleanPlayer.xg
             delete cleanPlayer.xa
+            delete cleanPlayer.avatarUrl
             return cleanPlayer
           })
           setSquad(storedPlayers)
@@ -648,7 +652,7 @@ export default function Home() {
       const result = await response.json() as {
         error?: string
         season?: string
-        ratings?: Array<{ id: string; mv?: number; appearances?: number; avatarUrl?: string }>
+        ratings?: Array<{ id: string; mv?: number; appearances?: number }>
       }
 
       if (!response.ok || !result.season || !Array.isArray(result.ratings)) {
@@ -665,20 +669,16 @@ export default function Home() {
         if (!rating) return player
 
         const hasOfficialRating = Number.isFinite(rating.mv) && Number.isFinite(rating.appearances) && rating.appearances! > 0
-        const hasOfficialAvatar = typeof rating.avatarUrl === "string"
-          && rating.avatarUrl.startsWith("https://content.fantacalcio.it/web/campioncini/21/card/")
 
         return {
           ...player,
           ...(hasOfficialRating ? { mv: rating.mv!, mvSource: "fantacalcio" as const, mvSeason: result.season } : {}),
-          ...(hasOfficialAvatar ? { avatarUrl: rating.avatarUrl } : {}),
         }
       }))
 
-      const portraitCount = result.ratings.filter((rating) => Boolean(rating.avatarUrl)).length
       const ratingCount = result.ratings.filter((rating) => Number.isFinite(rating.mv) && Number.isFinite(rating.appearances) && rating.appearances! > 0).length
-      const unmatched = squad.length - portraitCount
-      setRatingNotice(`${portraitCount} caricature ufficiali assegnate · ${ratingCount} medie voto aggiornate${unmatched ? ` · ${unmatched} senza caricatura ufficiale riconosciuta` : ""} · stagione ${result.season}.`)
+      const missingRatings = squad.length - ratingCount
+      setRatingNotice(`${squad.length} caricature originali già assegnate · ${ratingCount} medie voto aggiornate${missingRatings ? ` · ${missingRatings} senza media voto disponibile` : ""} · stagione ${result.season}.`)
     } catch {
       setRatingNotice("Recupero non riuscito. Riprova tra poco: la rosa non è stata modificata.")
     } finally {
@@ -720,7 +720,7 @@ export default function Home() {
         <header className="mx-auto flex w-full max-w-5xl items-center justify-between border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex items-center gap-2 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={16} /> HOME</button><span className="rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[9px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[8px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[9px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[10px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[9px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[10px] leading-4 text-white/55">Scarica le caricature ufficiali dei giocatori e aggiorna i voti da Fantacalcio.it.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[9px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[9px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "FOTO + MV…" : "AGGIORNA FOTO + MV"}</button></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[10px] leading-4 text-white/55">Caricature originali sempre disponibili; aggiorna la MV da Fantacalcio.it.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[9px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[9px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNA MV…" : "AGGIORNA MV"}</button></div>
           {ratingNotice && <p role="status" className="mt-3 rounded-xl border border-violet-300/15 bg-violet-300/[0.05] px-4 py-3 text-[10px] leading-5 text-violet-100/80">{ratingNotice}</p>}
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-xs leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
           {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><PlayerAvatar player={player} className="size-11 rounded-xl text-xs" /><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45"><span className={`mr-1 rounded border px-1 py-0.5 text-[8px] font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span>Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span title={player.mvSource === "fantacalcio" ? `Media voto ufficiale Fantacalcio.it · ${player.mvSeason}` : "Media voto stimata, non ancora sincronizzata"} className={`text-[9px] font-bold ${player.mvSource === "fantacalcio" ? "text-violet-200" : "text-white/45"}`}>{player.mvSource === "fantacalcio" ? "MV FC" : "MV stima"} {player.mv.toFixed(2)}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}

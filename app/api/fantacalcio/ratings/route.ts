@@ -9,7 +9,6 @@ type OfficialRating = {
   team: string
   mv?: number
   appearances?: number
-  avatarUrl?: string
 }
 
 const TEAM_CODES: Record<string, string> = {
@@ -86,19 +85,12 @@ function parseOfficialRatings(html: string): OfficialRating[] {
     const team = extractCell(row, "player-team").toUpperCase()
     const appearances = Number.parseInt(extractCell(row, "player-match-playeds"), 10)
     const mv = Number.parseFloat(extractCell(row, "player-grade-avg").replace(",", "."))
-    const profileUrl = row.match(/<a\b[^>]*class="[^"]*\bplayer-link\b[^"]*"[^>]*href="([^"]+)"/i)?.[1]
-    const playerCardId = profileUrl?.match(/\/(\d+)\/\d{4}-\d{2}\/italia(?:[/?#]|$)/)?.[1]
-    const avatarUrl = playerCardId
-      ? `https://content.fantacalcio.it/web/campioncini/21/card/${playerCardId}.png?v=834`
-      : undefined
-
     if (name && team) {
       ratings.push({
         name,
         team,
         ...(Number.isFinite(appearances) ? { appearances } : {}),
         ...(Number.isFinite(mv) ? { mv } : {}),
-        ...(avatarUrl ? { avatarUrl } : {}),
       })
     }
   }
@@ -185,7 +177,6 @@ export async function POST(request: Request) {
         id: player.id,
         ...(matched.mv !== undefined ? { mv: matched.mv } : {}),
         ...(matched.appearances !== undefined ? { appearances: matched.appearances } : {}),
-        ...(matched.avatarUrl ? { avatarUrl: matched.avatarUrl } : {}),
       }]
     })
 

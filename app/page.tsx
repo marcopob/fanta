@@ -435,8 +435,34 @@ function PlayerAvatar({ player, className }: { player: Player; className: string
   )
 }
 
+function getPlayerLineupReason(player: Player) {
+  const unavailableReason = /statistiche non disponibili|non sono state trovate|nessun dato|nessuna informazione|motivazione non disponibile/i.test(player.reason.trim())
+  if (!unavailableReason && player.reason.trim()) return player.reason
+
+  const roleReason: Record<Position, string> = {
+    P: "Tra i pali può puntare a una prestazione utile per il voto e a mantenere la porta inviolata.",
+    D: "In difesa può offrire una base per il voto e cercare un bonus sulle palle inattive.",
+    C: "A centrocampo può contribuire al voto e trovare spazio per inserimenti o assist.",
+    A: "In attacco può trasformare tiri e occasioni in un bonus utile alla squadra.",
+  }
+  const minutesNote = player.titolarita >= 80
+    ? `La titolarità stimata è alta (${player.titolarita}%), quindi può essere una scelta affidabile per questa giornata.`
+    : player.titolarita >= 60
+      ? `La titolarità stimata è del ${player.titolarita}%: può valere lo schieramento, tenendo conto del rischio minutaggio.`
+      : `La titolarità stimata è del ${player.titolarita}%: è una possibile scommessa, da valutare in base alle alternative.`
+  const stats = player.officialStats
+  const seasonNotes = stats?.appearances !== undefined
+    ? ` In stagione ha raccolto ${stats.appearances} ${stats.appearances === 1 ? "presenza" : "presenze"}${stats.mv !== undefined ? ` e una media voto di ${stats.mv.toFixed(2)}` : ""}${stats.goals ? `, con ${stats.goals} ${stats.goals === 1 ? "gol" : "gol"}` : ""}${stats.assists ? ` e ${stats.assists} ${stats.assists === 1 ? "assist" : "assist"}` : ""}.`
+    : ""
+  const matchupNote = player.opponent && player.opponent !== "—" ? ` La sfida è contro ${player.opponent}.` : ""
+  const availabilityNote = isUnavailable(player) ? " Verifica la disponibilità prima di confermarlo in formazione." : ""
+
+  return `${roleReason[player.position]} ${minutesNote}${seasonNotes}${matchupNote}${availabilityNote}`
+}
+
 function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
   const isRisk = player.titolarita < 60 || isUnavailable(player)
+  const lineupReason = getPlayerLineupReason(player)
   const officialStats = player.officialStats
   const officialStatItems: Array<[string, number | string | undefined]> = [
     ["Presenze", officialStats?.appearances],
@@ -476,7 +502,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           </section>
           <div className="mt-4 rounded-2xl border border-[#ffe85e]/10 bg-[#ffe85e]/[0.045] p-4">
             <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-[#ffe85e]"><Sparkles size={14} />Perché schierarlo</div>
-            <p className="mt-2 text-sm leading-6 text-white/75">{player.reason}</p>
+            <p className="mt-2 text-sm leading-6 text-white/75">{lineupReason}</p>
           </div>
           <p className="mt-3 text-[12px] leading-5 text-white/35">Hype, titolarità, avversario e consiglio sono stime; i dati nella sezione viola sono quelli pubblicati da Fantacalcio.it.</p>
           <button type="button" onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e] hover:bg-yellow-200">CHIUDI <Check size={16} /></button>

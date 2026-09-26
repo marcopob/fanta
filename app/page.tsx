@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
-import Fuse from "fuse.js"
+import { read as readWorkbook, utils as workbookUtils } from "xlsx"
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   ChevronRight,
   CircleDot,
+  FileSpreadsheet,
   Flame,
   LoaderCircle,
   LockKeyhole,
@@ -43,7 +44,8 @@ type Player = {
 type Formation = { name: string; defense: number; midfield: number; attack: number }
 type Lineup = Record<Position, Player[]>
 
-const STORAGE_KEY = "fanta-vibes-v4"
+const STORAGE_KEY = "fanta-vibes-v5"
+const LEGACY_STORAGE_KEY = "fanta-vibes-v4"
 
 const PLAYER_DB: Player[] = [
   { id: "svilar", name: "Svilar", team: "Roma", position: "P", mantraRoles: ["Por"], titolarita: 95, xg: 0.02, xa: 0.01, hype: 77, mv: 6.45, inj: false, reason: "Riferimento affidabile tra i pali, con buone possibilità di voto e interventi decisivi.", opponent: "Torino" },
@@ -136,11 +138,16 @@ function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidR
   return lineup
 }
 
+function exactPlayerByName(name: string): Player | undefined {
+  const normalizedName = normalizeName(name)
+  return PLAYER_DB.find((player) => normalizeName(player.name) === normalizedName)
+}
+
 function matchRosterFromOcr(text: string): Player[] {
-  const matcher = new Fuse(PLAYER_DB, { keys: ["name"], includeScore: true, threshold: 0.42, ignoreLocation: true, minMatchCharLength: 3 })
   const matchedIds = new Set<string>()
   const lines = text.split(/[\n\r|]+/).map((line) => line.replace(/\d+[.,]?\d*/g, " ").replace(/[^\p{L}\s.'-]/gu, " ").trim()).filter(Boolean)
   const headings = /^(rosa|titolari|panchina|formazione|giocatori|giocatore|portieri|portiere|difensori|centrocampisti|attaccanti|rendimento|quotazione|fantacalcio|punteggio|totale|voti|lega|mercato|svincolati|infortunati)$/i
+  const exactNames = new Map(PLAYER_DB.map((player) => [normalizeName(player.name), player.id]))
   for (const line of lines) {
     if (line.length < 3 || headings.test(line)) continue
     const words = line.split(/\s+/).filter((word) => word.length > 1)
@@ -149,11 +156,129 @@ function matchRosterFromOcr(text: string): Player[] {
       for (let start = 0; start <= words.length - size; start += 1) candidates.add(words.slice(start, start + size).join(" "))
     }
     for (const candidate of candidates) {
-      const match = matcher.search(candidate)[0]
-      if (match && (match.score ?? 1) <= 0.42) matchedIds.add(match.item.id)
+      const id = exactNames.get(normalizeName(candidate))
+      if (id) matchedIds.add(id)
     }
   }
   return PLAYER_DB.filter((player) => matchedIds.has(player.id))
+}
+
+const NAME_HEADERS = new Set(["giocatore", "calciatore", "nome", "nominativo", "nomegiocatore", "nomecalciatore", "player", "playername", "atleta"])
+const TEAM_HEADERS = new Set(["squadra", "teamsquadra", "club", "clubsquadra", "squadraappartenenza"])
+const ROLE_HEADERS = new Set(["ruolo", "ruoliclassic", "ruolomantra", "ruoli", "posizione", "r", "mantra"])
+
+function getImportedRole(roleText: string, existing?: Player) {
+  const tokens = roleText.toUpperCase().match(/POR|PC|DC|DD|DS|[PMDCETWA]/g) ?? []
+  const mantraRoles = [...new Set(tokens.map((role) => role === "P" ? "Por" : role[0] + role.slice(1).toLowerCase()))]
+  const position: Position | undefined = tokens.some((role) => role === "P" || role === "POR") ? "P"
+    : tokens.some((role) => ["D", "DC", "DD", "DS"].includes(role)) ? "D"
+      : tokens.some((role) => ["A", "PC", "W"].includes(role)) ? "A"
+        : tokens.some((role) => ["M", "C", "T", "E"].includes(role)) ? "C"
+          : existing?.position
+  return { position: position ?? "C", mantraRoles: mantraRoles.length ? mantraRoles : existing?.mantraRoles ?? [] }
+}
+
+function createImportedPlayer(name: string, team: string, roleText: string): Player {
+  const existing = exactPlayerByName(name)
+  const importedRole = getImportedRole(roleText, existing)
+  if (existing) {
+    return { ...existing, name: name.trim(), team: team || existing.team, position: importedRole.position, mantraRoles: importedRole.mantraRoles }
+  }
+  const id = `import-${normalizeName(name)}`
+  return {
+    id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles,
+    titolarita: 50, xg: 0, xa: 0, hype: 0, mv: 6, inj: false,
+    reason: "Statistiche non disponibili per questo giocatore nel catalogo locale.", opponent: "—",
+  }
+}
+
+function parseRosterRows(rows: unknown[][]) {
+  const normalizedRows = rows.map((row) => row.map((cell) => String(cell ?? "").trim()))
+  const headerIndex = normalizedRows.slice(0, 15).findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
+  const seenNames = new Set<string>()
+  const players: Player[] = []
+
+  const addPlayer = (name: string, team = "", roleText = "") => {
+    const cleanName = name.replace(/^[\s\d.#-]+|[\s\d.#-]+$/g, "").trim()
+    const key = normalizeName(cleanName)
+    if (key.length < 2 || seenNames.has(key)) return
+    seenNames.add(key)
+    players.push(createImportedPlayer(cleanName, team, roleText))
+  }
+
+  if (headerIndex >= 0) {
+    const headers = normalizedRows[headerIndex].map(normalizeName)
+    let nameIndex = headers.findIndex((header) => NAME_HEADERS.has(header))
+    const firstNameIndex = headers.findIndex((header) => ["nome", "firstname", "nomeproprio"].includes(header))
+    const lastNameIndex = headers.findIndex((header) => ["cognome", "lastname", "cognomegiocatore"].includes(header))
+    if (nameIndex < 0 && firstNameIndex >= 0 && lastNameIndex >= 0) nameIndex = firstNameIndex
+    const teamIndex = headers.findIndex((header) => TEAM_HEADERS.has(header))
+    const roleIndexes = headers.map((header, index) => ROLE_HEADERS.has(header) ? index : -1).filter((index) => index >= 0)
+    for (const row of normalizedRows.slice(headerIndex + 1)) {
+      const name = firstNameIndex >= 0 && lastNameIndex >= 0 ? `${row[firstNameIndex] ?? ""} ${row[lastNameIndex] ?? ""}`.trim() : row[nameIndex] ?? ""
+      if (!name) continue
+      addPlayer(name, teamIndex >= 0 ? row[teamIndex] : "", roleIndexes.map((index) => row[index] ?? "").join(" "))
+    }
+  } else {
+    for (const row of normalizedRows) {
+      for (const cell of row) {
+        const exactMatch = exactPlayerByName(cell)
+        if (exactMatch) addPlayer(exactMatch.name, exactMatch.team, exactMatch.mantraRoles.join(" "))
+      }
+    }
+  }
+  return players
+}
+
+function getCsvDelimiter(text: string) {
+  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0] ?? ""
+  const counts = [";", ",", "\t"].map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
+  const detected = counts.sort((a, b) => b.count - a.count)[0]
+  return detected.count > 1 ? detected.delimiter : ","
+}
+
+function readBrowserFile(file: File, format: "text"): Promise<string>
+function readBrowserFile(file: File, format: "arrayBuffer"): Promise<ArrayBuffer>
+function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<string | ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error ?? new Error("Unable to read selected file"))
+    reader.onabort = () => reject(new Error("File reading was cancelled"))
+    reader.onload = () => {
+      if (format === "text" && typeof reader.result === "string") resolve(reader.result)
+      else if (format === "arrayBuffer" && reader.result instanceof ArrayBuffer) resolve(reader.result)
+      else reject(new Error("Unexpected file format"))
+    }
+    if (format === "text") reader.readAsText(file)
+    else reader.readAsArrayBuffer(file)
+  })
+}
+
+async function importRosterFile(file: File): Promise<Player[]> {
+  const extension = file.name.toLowerCase().split(".").pop()
+  let workbook
+  if (extension === "csv") {
+    const csv = await readBrowserFile(file, "text")
+    workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) })
+  } else {
+    const fileBytes = await readBrowserFile(file, "arrayBuffer")
+    workbook = readWorkbook(fileBytes, { type: "array" })
+  }
+  const players = workbook.SheetNames.flatMap((sheetName) => {
+    const sheet = workbook.Sheets[sheetName]
+    return sheet ? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: false })) : []
+  })
+  return [...new Map(players.map((player) => [player.id, player])).values()]
+}
+
+function isStoredPlayer(value: unknown): value is Player {
+  if (!value || typeof value !== "object") return false
+  const player = value as Partial<Player>
+  return typeof player.id === "string" && typeof player.name === "string" && typeof player.team === "string"
+    && ["P", "D", "C", "A"].includes(player.position ?? "") && Array.isArray(player.mantraRoles)
+    && typeof player.titolarita === "number" && typeof player.xg === "number" && typeof player.xa === "number"
+    && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
+    && typeof player.reason === "string" && typeof player.opponent === "string"
 }
 
 function getTitolaritaStyle(value: number) {
@@ -241,25 +366,29 @@ export default function Home() {
   const [formationIndex, setFormationIndex] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [scanning, setScanning] = useState(false)
+  const [importingRoster, setImportingRoster] = useState(false)
   const [progress, setProgress] = useState(0)
   const [scanNotice, setScanNotice] = useState("")
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
+  const rosterFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) {
-        const value = JSON.parse(saved) as { mode?: Mode; defenseModifier?: boolean; avoidRisk?: boolean; teamName?: string; playerIds?: string[]; page?: Page }
+      const legacy = !saved ? localStorage.getItem(LEGACY_STORAGE_KEY) : null
+      const storedValue = saved ?? legacy
+      if (storedValue) {
+        const value = JSON.parse(storedValue) as { mode?: Mode; defenseModifier?: boolean; avoidRisk?: boolean; teamName?: string; players?: unknown[] }
         if (value.mode === "Classic" || value.mode === "Mantra") setMode(value.mode)
         if (typeof value.defenseModifier === "boolean") setDefenseModifier(value.defenseModifier)
         if (typeof value.avoidRisk === "boolean") setAvoidRisk(value.avoidRisk)
         if (typeof value.teamName === "string") setTeamName(value.teamName)
-        if (Array.isArray(value.playerIds)) {
-          const ids = new Set(value.playerIds.filter((id): id is string => typeof id === "string"))
-          setSquad(PLAYER_DB.filter((player) => ids.has(player.id)))
-          if (value.page === "roster" || value.page === "formation") setPage("roster")
+        if (saved && Array.isArray(value.players)) {
+          const storedPlayers = value.players.filter(isStoredPlayer)
+          setSquad(storedPlayers)
+          if (storedPlayers.length) setPage("roster")
         }
       }
     } catch {
@@ -271,7 +400,7 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, defenseModifier, avoidRisk, teamName, playerIds: squad.map((player) => player.id), page }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, defenseModifier, avoidRisk, teamName, players: squad, page }))
     } catch {
       // Storage can be unavailable in private browsing; the current session remains usable.
     }
@@ -329,6 +458,40 @@ export default function Home() {
     }
   }
 
+  async function handleRosterFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const supportedFile = /\.(xlsx|csv)$/i.test(file.name)
+    if (!supportedFile) {
+      setScanNotice("Scegli un file .xlsx o .csv esportato dalla tua lega Fantacalcio.")
+      event.target.value = ""
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setScanNotice("Il file supera il limite di 15 MB. Esporta una rosa più leggera e riprova.")
+      event.target.value = ""
+      return
+    }
+
+    setImportingRoster(true)
+    setScanNotice("")
+    try {
+      const importedPlayers = await importRosterFile(file)
+      setSquad(importedPlayers)
+      setPage("roster")
+      setScanNotice(importedPlayers.length
+        ? `${importedPlayers.length} ${importedPlayers.length === 1 ? "giocatore importato" : "giocatori importati"} dal file. Nessun nome viene abbinato per somiglianza.`
+        : "Nessun giocatore trovato nel file. Verifica che contenga una colonna Giocatore o Nome e riprova.")
+    } catch {
+      setSquad([])
+      setPage("roster")
+      setScanNotice("Impossibile leggere il file. Esporta nuovamente la rosa in formato .xlsx o .csv e riprova.")
+    } finally {
+      setImportingRoster(false)
+      if (rosterFileRef.current) rosterFileRef.current.value = ""
+    }
+  }
+
   function goHome() {
     setSelectedPlayer(null)
     setPage("home")
@@ -344,8 +507,9 @@ export default function Home() {
         <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center gap-2.5 py-2 sm:gap-3.5 sm:py-4">
           <section className="flex shrink-0 items-center gap-3 rounded-[22px] border border-white/[0.09] bg-[#151732] px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
             <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#ffe85e]/20 bg-[#ffe85e]/[0.08] text-[#ffe85e] sm:size-16"><span className="text-[30px] leading-none" aria-hidden="true">📷</span></div>
-            <div className="min-w-0 flex-1"><h2 className="text-sm font-black leading-tight sm:text-base">Carica screenshot rosa Fantacalcio</h2><p className="mt-1 hidden text-[10px] text-white/45 sm:block">Tesseract legge i nomi; Fuse.js li abbina alla rosa.</p><label htmlFor="roster-image" className={`mt-2.5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-[10px] font-black text-[#0a0c1e] transition hover:bg-[#ffe85e] sm:mt-3 sm:px-4 sm:py-2.5 sm:text-xs`}>{scanning ? <><LoaderCircle size={14} className="animate-spin" />LETTURA {progress}%</> : <><Users size={14} />SCEGLI IMMAGINE</>}</label></div>
-            <input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Scegli screenshot della rosa" disabled={scanning} />
+            <div className="min-w-0 flex-1"><h2 className="text-sm font-black leading-tight sm:text-base">Carica la tua rosa Fantacalcio</h2><p className="mt-1 hidden text-[10px] text-white/45 sm:block">Screenshot con OCR oppure importazione esatta da file ufficiale XLSX o CSV.</p><label htmlFor="roster-image" className={`mt-2.5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-[10px] font-black text-[#0a0c1e] transition hover:bg-[#ffe85e] sm:mt-3 sm:px-4 sm:py-2.5 sm:text-xs`}>{scanning ? <><LoaderCircle size={14} className="animate-spin" />LETTURA {progress}%</> : <><Users size={14} />SCEGLI IMMAGINE</>}</label><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={importingRoster || scanning} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-[#ffe85e]/35 bg-[#ffe85e]/[0.07] px-3 py-2 text-[9px] font-black text-[#ffe85e] transition hover:bg-[#ffe85e]/15 disabled:opacity-50 sm:min-h-10 sm:text-[10px]">{importingRoster ? <LoaderCircle size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />}IMPORTA XLSX / CSV</button></div>
+            <input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Scegli screenshot della rosa" disabled={scanning || importingRoster} />
+            <input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} />
           </section>
           <label className="flex shrink-0 flex-col gap-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/55">Nome squadra<input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="es. A S Tronzo" className="h-10 rounded-xl border border-white/10 bg-[#151732] px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-white/30 focus:border-[#ffe85e]/60 sm:h-11" /></label>
           <fieldset className="shrink-0"><legend className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white/55">Scegli la tua lega</legend><div className="grid grid-cols-2 gap-2.5 sm:gap-3">
@@ -359,7 +523,7 @@ export default function Home() {
       </div>}
 
       {page === "roster" && <div className="min-h-[100svh] px-4 pb-28 sm:px-8 sm:pb-32">
-        <header className="mx-auto flex w-full max-w-5xl items-center justify-between border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex items-center gap-2 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={16} /> HOME</button><span className="rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[9px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning} /></header>
+        <header className="mx-auto flex w-full max-w-5xl items-center justify-between border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex items-center gap-2 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={16} /> HOME</button><span className="rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[9px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[8px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[9px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[10px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[9px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-xs leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}

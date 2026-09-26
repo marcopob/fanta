@@ -33,8 +33,6 @@ type Player = {
   position: Position
   mantraRoles: string[]
   titolarita: number
-  xg: number
-  xa: number
   hype: number
   mv: number
   inj: boolean
@@ -49,31 +47,31 @@ const STORAGE_KEY = "fanta-vibes-v5"
 const LEGACY_STORAGE_KEY = "fanta-vibes-v4"
 
 const PLAYER_DB: Player[] = [
-  { id: "svilar", name: "Svilar", team: "Roma", position: "P", mantraRoles: ["Por"], titolarita: 95, xg: 0.02, xa: 0.01, hype: 77, mv: 6.45, inj: false, reason: "Riferimento affidabile tra i pali, con buone possibilità di voto e interventi decisivi.", opponent: "Torino" },
-  { id: "sommer", name: "Sommer", team: "Inter", position: "P", mantraRoles: ["Por"], titolarita: 94, xg: 0.01, xa: 0.01, hype: 74, mv: 6.52, inj: false, reason: "Difesa solida alle spalle e ottima continuità di rendimento.", opponent: "Lazio" },
-  { id: "maignan", name: "Maignan", team: "Milan", position: "P", mantraRoles: ["Por"], titolarita: 91, xg: 0.01, xa: 0.02, hype: 82, mv: 6.48, inj: false, reason: "Il suo potenziale tra i pali rende interessante anche una partita equilibrata.", opponent: "Bologna" },
-  { id: "mancini", name: "Mancini", team: "Roma", position: "D", mantraRoles: ["Dc"], titolarita: 91, xg: 0.11, xa: 0.04, hype: 70, mv: 6.35, inj: false, reason: "Pericoloso sui piazzati, con una buona base voto e minutaggio costante.", opponent: "Torino" },
-  { id: "bastoni", name: "Bastoni", team: "Inter", position: "D", mantraRoles: ["Dc", "Ds"], titolarita: 93, xg: 0.09, xa: 0.14, hype: 81, mv: 6.58, inj: false, reason: "La qualità in impostazione crea occasioni da assist oltre a una media voto solida.", opponent: "Lazio" },
-  { id: "dilorenzo", name: "Di Lorenzo", team: "Napoli", position: "D", mantraRoles: ["Dd", "E"], titolarita: 90, xg: 0.08, xa: 0.17, hype: 78, mv: 6.47, inj: false, reason: "Spinge con continuità e accompagna spesso l'azione offensiva.", opponent: "Udinese" },
-  { id: "cambiaso", name: "Cambiaso", team: "Juventus", position: "D", mantraRoles: ["Dd", "Ds", "E"], titolarita: 84, xg: 0.07, xa: 0.19, hype: 76, mv: 6.38, inj: false, reason: "La duttilità e la partecipazione alla manovra aumentano le occasioni da bonus.", opponent: "Genoa" },
-  { id: "dimarco", name: "Dimarco", team: "Inter", position: "D", mantraRoles: ["Ds", "E"], titolarita: 90, xg: 0.16, xa: 0.31, hype: 92, mv: 6.75, inj: false, reason: "Cross, piazzati e conclusioni: profilo difensivo con upside offensivo notevole.", opponent: "Lazio" },
-  { id: "zappacosta", name: "Zappacosta", team: "Atalanta", position: "D", mantraRoles: ["E", "Dd"], titolarita: 74, xg: 0.13, xa: 0.23, hype: 75, mv: 6.32, inj: false, reason: "Quinto di spinta che può arrivare al cross e alla conclusione.", opponent: "Fiorentina" },
-  { id: "scalvini", name: "Scalvini", team: "Atalanta", position: "D", mantraRoles: ["Dc"], titolarita: 68, xg: 0.08, xa: 0.03, hype: 64, mv: 6.20, inj: true, reason: "Buon potenziale sui piazzati, ma la condizione fisica richiede attenzione.", opponent: "Fiorentina" },
-  { id: "buongiorno", name: "Buongiorno", team: "Napoli", position: "D", mantraRoles: ["Dc"], titolarita: 85, xg: 0.09, xa: 0.02, hype: 72, mv: 6.39, inj: false, reason: "Difensore centrale regolare, con presenza in area sulle palle inattive.", opponent: "Udinese" },
-  { id: "calhanoglu", name: "Calhanoglu", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 93, xg: 0.22, xa: 0.30, hype: 89, mv: 6.71, inj: false, reason: "Rigori e calci piazzati aggiungono un alto potenziale di bonus.", opponent: "Lazio" },
-  { id: "barella", name: "Barella", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 92, xg: 0.17, xa: 0.23, hype: 84, mv: 6.57, inj: false, reason: "Volume di gioco e inserimenti continui: affidabile per voto e bonus.", opponent: "Lazio" },
-  { id: "pellegrini", name: "Pellegrini", team: "Roma", position: "C", mantraRoles: ["C", "T"], titolarita: 79, xg: 0.24, xa: 0.27, hype: 82, mv: 6.52, inj: false, reason: "Gioca vicino alla porta e cerca spesso l'ultimo passaggio.", opponent: "Torino" },
-  { id: "bernabe", name: "Bernabè", team: "Parma", position: "C", mantraRoles: ["C", "T"], titolarita: 86, xg: 0.16, xa: 0.29, hype: 74, mv: 6.39, inj: false, reason: "Creatività e passaggi chiave possono fare la differenza anche in una gara chiusa.", opponent: "Como" },
-  { id: "dacuhna", name: "Da Cunha", team: "Como", position: "C", mantraRoles: ["M", "C"], titolarita: 69, xg: 0.11, xa: 0.20, hype: 66, mv: 6.24, inj: false, reason: "Centrocampista dinamico, con inserimenti e assist possibili.", opponent: "Parma" },
-  { id: "pulisic", name: "Pulisic", team: "Milan", position: "C", mantraRoles: ["W", "T"], titolarita: 89, xg: 0.39, xa: 0.27, hype: 91, mv: 6.73, inj: false, reason: "Si inserisce con frequenza e partecipa alla maggior parte delle azioni pericolose.", opponent: "Bologna" },
-  { id: "zaccagni", name: "Zaccagni", team: "Lazio", position: "C", mantraRoles: ["W", "A"], titolarita: 83, xg: 0.31, xa: 0.24, hype: 85, mv: 6.54, inj: false, reason: "Esterno offensivo che attacca l'area e crea superiorità nell'uno contro uno.", opponent: "Inter" },
-  { id: "orsolini", name: "Orsolini", team: "Bologna", position: "A", mantraRoles: ["W", "A"], titolarita: 90, xg: 0.43, xa: 0.25, hype: 91, mv: 6.70, inj: false, reason: "Conclusioni e responsabilità sui piazzati lo rendono una scelta ad alto potenziale.", opponent: "Milan" },
-  { id: "soule", name: "Soulé", team: "Roma", position: "A", mantraRoles: ["W", "A"], titolarita: 85, xg: 0.39, xa: 0.32, hype: 89, mv: 6.61, inj: false, reason: "Coinvolto nelle occasioni e nell'ultimo passaggio, con un buon volume di tiri.", opponent: "Torino" },
-  { id: "castro", name: "Castro S.", team: "Bologna", position: "A", mantraRoles: ["Pc"], titolarita: 87, xg: 0.46, xa: 0.19, hype: 88, mv: 6.59, inj: false, reason: "Centravanti con volume di tiro e presenza costante in area.", opponent: "Milan" },
-  { id: "diao", name: "Diao", team: "Como", position: "A", mantraRoles: ["A", "W"], titolarita: 58, xg: 0.34, xa: 0.20, hype: 79, mv: 6.34, inj: false, reason: "Attacca la profondità e crea superiorità, ma la titolarità è da verificare.", opponent: "Parma" },
-  { id: "lautaro", name: "Lautaro", team: "Inter", position: "A", mantraRoles: ["Pc"], titolarita: 94, xg: 0.59, xa: 0.17, hype: 97, mv: 6.91, inj: false, reason: "Finalizzatore con alto volume di occasioni e rigorista della squadra.", opponent: "Lazio" },
-  { id: "lookman", name: "Lookman", team: "Atalanta", position: "A", mantraRoles: ["A", "Pc"], titolarita: 88, xg: 0.48, xa: 0.27, hype: 94, mv: 6.82, inj: false, reason: "Strappi e conclusioni lo rendono una delle principali fonti di bonus.", opponent: "Fiorentina" },
-  { id: "retegui", name: "Retegui", team: "Atalanta", position: "A", mantraRoles: ["Pc"], titolarita: 82, xg: 0.51, xa: 0.13, hype: 88, mv: 6.69, inj: false, reason: "Attaccante d'area con buone occasioni da gol e presenza sui cross.", opponent: "Fiorentina" },
+  { id: "svilar", name: "Svilar", team: "Roma", position: "P", mantraRoles: ["Por"], titolarita: 95, hype: 77, mv: 6.45, inj: false, reason: "Riferimento affidabile tra i pali, con buone possibilità di voto e interventi decisivi.", opponent: "Torino" },
+  { id: "sommer", name: "Sommer", team: "Inter", position: "P", mantraRoles: ["Por"], titolarita: 94, hype: 74, mv: 6.52, inj: false, reason: "Difesa solida alle spalle e ottima continuità di rendimento.", opponent: "Lazio" },
+  { id: "maignan", name: "Maignan", team: "Milan", position: "P", mantraRoles: ["Por"], titolarita: 91, hype: 82, mv: 6.48, inj: false, reason: "Il suo potenziale tra i pali rende interessante anche una partita equilibrata.", opponent: "Bologna" },
+  { id: "mancini", name: "Mancini", team: "Roma", position: "D", mantraRoles: ["Dc"], titolarita: 91, hype: 70, mv: 6.35, inj: false, reason: "Pericoloso sui piazzati, con una buona base voto e minutaggio costante.", opponent: "Torino" },
+  { id: "bastoni", name: "Bastoni", team: "Inter", position: "D", mantraRoles: ["Dc", "Ds"], titolarita: 93, hype: 81, mv: 6.58, inj: false, reason: "La qualità in impostazione crea occasioni da assist oltre a una media voto solida.", opponent: "Lazio" },
+  { id: "dilorenzo", name: "Di Lorenzo", team: "Napoli", position: "D", mantraRoles: ["Dd", "E"], titolarita: 90, hype: 78, mv: 6.47, inj: false, reason: "Spinge con continuità e accompagna spesso l'azione offensiva.", opponent: "Udinese" },
+  { id: "cambiaso", name: "Cambiaso", team: "Juventus", position: "D", mantraRoles: ["Dd", "Ds", "E"], titolarita: 84, hype: 76, mv: 6.38, inj: false, reason: "La duttilità e la partecipazione alla manovra aumentano le occasioni da bonus.", opponent: "Genoa" },
+  { id: "dimarco", name: "Dimarco", team: "Inter", position: "D", mantraRoles: ["Ds", "E"], titolarita: 90, hype: 92, mv: 6.75, inj: false, reason: "Cross, piazzati e conclusioni: profilo difensivo con upside offensivo notevole.", opponent: "Lazio" },
+  { id: "zappacosta", name: "Zappacosta", team: "Atalanta", position: "D", mantraRoles: ["E", "Dd"], titolarita: 74, hype: 75, mv: 6.32, inj: false, reason: "Quinto di spinta che può arrivare al cross e alla conclusione.", opponent: "Fiorentina" },
+  { id: "scalvini", name: "Scalvini", team: "Atalanta", position: "D", mantraRoles: ["Dc"], titolarita: 68, hype: 64, mv: 6.20, inj: true, reason: "Buon potenziale sui piazzati, ma la condizione fisica richiede attenzione.", opponent: "Fiorentina" },
+  { id: "buongiorno", name: "Buongiorno", team: "Napoli", position: "D", mantraRoles: ["Dc"], titolarita: 85, hype: 72, mv: 6.39, inj: false, reason: "Difensore centrale regolare, con presenza in area sulle palle inattive.", opponent: "Udinese" },
+  { id: "calhanoglu", name: "Calhanoglu", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 93, hype: 89, mv: 6.71, inj: false, reason: "Rigori e calci piazzati aggiungono un alto potenziale di bonus.", opponent: "Lazio" },
+  { id: "barella", name: "Barella", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 92, hype: 84, mv: 6.57, inj: false, reason: "Volume di gioco e inserimenti continui: affidabile per voto e bonus.", opponent: "Lazio" },
+  { id: "pellegrini", name: "Pellegrini", team: "Roma", position: "C", mantraRoles: ["C", "T"], titolarita: 79, hype: 82, mv: 6.52, inj: false, reason: "Gioca vicino alla porta e cerca spesso l'ultimo passaggio.", opponent: "Torino" },
+  { id: "bernabe", name: "Bernabè", team: "Parma", position: "C", mantraRoles: ["C", "T"], titolarita: 86, hype: 74, mv: 6.39, inj: false, reason: "Creatività e passaggi chiave possono fare la differenza anche in una gara chiusa.", opponent: "Como" },
+  { id: "dacuhna", name: "Da Cunha", team: "Como", position: "C", mantraRoles: ["M", "C"], titolarita: 69, hype: 66, mv: 6.24, inj: false, reason: "Centrocampista dinamico, con inserimenti e assist possibili.", opponent: "Parma" },
+  { id: "pulisic", name: "Pulisic", team: "Milan", position: "C", mantraRoles: ["W", "T"], titolarita: 89, hype: 91, mv: 6.73, inj: false, reason: "Si inserisce con frequenza e partecipa alla maggior parte delle azioni pericolose.", opponent: "Bologna" },
+  { id: "zaccagni", name: "Zaccagni", team: "Lazio", position: "C", mantraRoles: ["W", "A"], titolarita: 83, hype: 85, mv: 6.54, inj: false, reason: "Esterno offensivo che attacca l'area e crea superiorità nell'uno contro uno.", opponent: "Inter" },
+  { id: "orsolini", name: "Orsolini", team: "Bologna", position: "A", mantraRoles: ["W", "A"], titolarita: 90, hype: 91, mv: 6.70, inj: false, reason: "Conclusioni e responsabilità sui piazzati lo rendono una scelta ad alto potenziale.", opponent: "Milan" },
+  { id: "soule", name: "Soulé", team: "Roma", position: "A", mantraRoles: ["W", "A"], titolarita: 85, hype: 89, mv: 6.61, inj: false, reason: "Coinvolto nelle occasioni e nell'ultimo passaggio, con un buon volume di tiri.", opponent: "Torino" },
+  { id: "castro", name: "Castro S.", team: "Bologna", position: "A", mantraRoles: ["Pc"], titolarita: 87, hype: 88, mv: 6.59, inj: false, reason: "Centravanti con volume di tiro e presenza costante in area.", opponent: "Milan" },
+  { id: "diao", name: "Diao", team: "Como", position: "A", mantraRoles: ["A", "W"], titolarita: 58, hype: 79, mv: 6.34, inj: false, reason: "Attacca la profondità e crea superiorità, ma la titolarità è da verificare.", opponent: "Parma" },
+  { id: "lautaro", name: "Lautaro", team: "Inter", position: "A", mantraRoles: ["Pc"], titolarita: 94, hype: 97, mv: 6.91, inj: false, reason: "Finalizzatore con alto volume di occasioni e rigorista della squadra.", opponent: "Lazio" },
+  { id: "lookman", name: "Lookman", team: "Atalanta", position: "A", mantraRoles: ["A", "Pc"], titolarita: 88, hype: 94, mv: 6.82, inj: false, reason: "Strappi e conclusioni lo rendono una delle principali fonti di bonus.", opponent: "Fiorentina" },
+  { id: "retegui", name: "Retegui", team: "Atalanta", position: "A", mantraRoles: ["Pc"], titolarita: 82, hype: 88, mv: 6.69, inj: false, reason: "Attaccante d'area con buone occasioni da gol e presenza sui cross.", opponent: "Fiorentina" },
 ]
 
 const CLASSIC_FORMATIONS: Formation[] = [
@@ -114,8 +112,7 @@ function getAvailability(player: Player) {
 }
 
 function getExpectedPlayerValue(player: Player) {
-  const perAppearanceValue = 0.2 + player.xg * 3 + player.xa + Math.max(0, player.mv - 6) * 0.25 + player.hype / 2000
-  return perAppearanceValue * getAvailability(player)
+  return player.mv * getAvailability(player)
 }
 
 function canPlay(player: Player, position: Position, mode: Mode) {
@@ -285,7 +282,7 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   const id = `import-${normalizeName(name)}`
   return {
     id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles,
-    titolarita: 50, xg: 0, xa: 0, hype: 0, mv: 6, inj: inj ?? false, suspended: suspended ?? false,
+    titolarita: 50, hype: 0, mv: 6, inj: inj ?? false, suspended: suspended ?? false,
     reason: "Statistiche non disponibili per questo giocatore nel catalogo locale.", opponent: "—",
   }
 }
@@ -380,8 +377,7 @@ function isStoredPlayer(value: unknown): value is Player {
   const player = value as Partial<Player>
   return typeof player.id === "string" && typeof player.name === "string" && typeof player.team === "string"
     && ["P", "D", "C", "A"].includes(player.position ?? "") && Array.isArray(player.mantraRoles)
-    && typeof player.titolarita === "number" && typeof player.xg === "number" && typeof player.xa === "number"
-    && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
+  && typeof player.titolarita === "number" && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
     && (player.suspended === undefined || typeof player.suspended === "boolean")
     && typeof player.reason === "string" && typeof player.opponent === "string"
 }
@@ -408,13 +404,13 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
             <button type="button" onClick={onClose} aria-label="Chiudi dettagli" className="rounded-full border border-white/10 p-2 text-white/60 hover:bg-white/10"><X size={18} /></button>
           </div>
           <div className="mt-6 grid grid-cols-3 gap-2">
-            {[["xG", player.xg.toFixed(2), "text-[#ffe85e]"], ["xA", player.xa.toFixed(2), "text-sky-200"], ["Hype", `${player.hype}%`, "text-orange-200"], ["MV", player.mv.toFixed(2), "text-violet-200"], ["Titolare", `${player.titolarita}%`, "text-emerald-200"], ["Rischio", isRisk ? "ALTO" : "BASSO", isRisk ? "text-rose-200" : "text-emerald-200"]].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><div className={`mb-2 text-[9px] font-bold uppercase tracking-widest ${color}`}>{label}</div><div className="text-lg font-black">{value}</div></div>)}
+            {[["Hype", `${player.hype}%`, "text-orange-200"], ["MV", player.mv.toFixed(2), "text-violet-200"], ["Titolare", `${player.titolarita}%`, "text-emerald-200"], ["Rischio", isRisk ? "ALTO" : "BASSO", isRisk ? "text-rose-200" : "text-emerald-200"]].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><div className={`mb-2 text-[9px] font-bold uppercase tracking-widest ${color}`}>{label}</div><div className="text-lg font-black">{value}</div></div>)}
           </div>
           <div className="mt-4 rounded-2xl border border-[#ffe85e]/10 bg-[#ffe85e]/[0.045] p-4">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#ffe85e]"><Sparkles size={14} />Perché schierarlo</div>
             <p className="mt-2 text-sm leading-6 text-white/75">{player.reason}</p>
           </div>
-          <p className="mt-3 text-[10px] leading-5 text-white/35">xG, xA, hype, media voto, titolarità e avversario sono stime illustrative.</p>
+          <p className="mt-3 text-[10px] leading-5 text-white/35">Hype, media voto, titolarità e avversario sono stime illustrative.</p>
           <button type="button" onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e] hover:bg-yellow-200">CHIUDI <Check size={16} /></button>
         </div>
       </section>
@@ -431,8 +427,7 @@ function PitchPlayer({ player, onSelect }: { player: Player; onSelect: (player: 
         <span className={`absolute -right-3 -top-2 rounded-full border px-1.5 py-0.5 text-[8px] font-black leading-none ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}%</span>
       </span>
       <span className="max-w-[80px] truncate text-[10px] font-bold sm:max-w-28 sm:text-[11px]">{player.name}</span>
-      <span className="text-[9px] font-semibold text-[#ffe85e]/80">xG {player.xg.toFixed(2)}</span>
-    </button>
+        </button>
   )
 }
 
@@ -491,7 +486,12 @@ export default function Home() {
         if (typeof value.avoidRisk === "boolean") setAvoidRisk(value.avoidRisk)
         if (typeof value.teamName === "string") setTeamName(value.teamName)
         if (saved && Array.isArray(value.players)) {
-          const storedPlayers = value.players.filter(isStoredPlayer)
+          const storedPlayers = value.players.filter(isStoredPlayer).map((player) => {
+            const cleanPlayer = { ...player } as Player & { xg?: number; xa?: number }
+            delete cleanPlayer.xg
+            delete cleanPlayer.xa
+            return cleanPlayer
+          })
           setSquad(storedPlayers)
           if (storedPlayers.length) setPage("roster")
         }
@@ -522,11 +522,11 @@ export default function Home() {
   const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk, defenseModifier), [squad, currentFormation, mode, avoidRisk, defenseModifier])
   const starters = useMemo(() => Object.values(lineup).flat(), [lineup])
   const benchAdvice = useMemo(() => recommendBench(squad, starters, mode, avoidRisk), [squad, starters, mode, avoidRisk])
-  const currentExpectedValue = starters.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
   const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((probability, player) => probability * getAvailability(player), 1) : 0
+  const expectedAttendance = starters.reduce((total, player) => total + getAvailability(player), 0)
   const expectedBaseRating = starters.reduce((total, player) => total + player.mv * getAvailability(player), 0)
-  const expectedOffensiveBonusPoints = starters.reduce((total, player) => total + (player.xg * 2 + player.xa) * getAvailability(player), 0)
-  const expectedTeamScore = expectedBaseRating + expectedOffensiveBonusPoints + currentModifierBonus
+  const expectedAverageRating = expectedAttendance > 0 ? expectedBaseRating / expectedAttendance : 0
+  const expectedTeamScore = expectedBaseRating + currentModifierBonus
   const expectedTeamGoals = Math.max(0, Math.floor((expectedTeamScore - 60) / 6))
   const nextGoalThreshold = expectedTeamGoals === 0 ? 66 : 66 + expectedTeamGoals * 6
   const pointsToNextGoal = Math.max(0, nextGoalThreshold - expectedTeamScore)
@@ -536,9 +536,6 @@ export default function Home() {
   const riskPlayers = starters.filter((player) => player.titolarita < 60 || player.inj)
   const fallbackPlayers = starters.filter((player) => avoidRisk && player.titolarita < 60)
   const missingStarters = Math.max(0, 11 - starters.length)
-  const totalXg = starters.reduce((sum, player) => sum + player.xg, 0)
-  const totalXa = starters.reduce((sum, player) => sum + player.xa, 0)
-  const averageTitolarita = starters.length ? starters.reduce((sum, player) => sum + player.titolarita, 0) / starters.length : 0
   const defenders = lineup.D
   const defenderAverage = getModifierAverage(defenders, lineup.P) ?? 0
   const defenseBonus = getModifierBonus(defenders, lineup.P)
@@ -650,7 +647,7 @@ export default function Home() {
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[10px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[9px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-xs leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
-          {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><span className={`flex size-10 shrink-0 items-center justify-center rounded-xl border text-xs font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45">Classic {player.position} <span className="mx-1 text-white/20">·</span> Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span className="text-[9px] font-bold text-[#ffe85e]">xG {player.xg.toFixed(2)}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
+          {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><span className={`flex size-10 shrink-0 items-center justify-center rounded-xl border text-xs font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45">Classic {player.position} <span className="mx-1 text-white/20">·</span> Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span className="text-[9px] font-bold text-[#ffe85e]"> {}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
         </section>
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.07] bg-[#0a0c1e]/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-8"><button type="button" disabled={!squad.length} onClick={() => { setFormationIndex(recommendedIndex); setPage("formation") }} className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl bg-[#ffe85e] px-5 py-3.5 text-xs font-black tracking-[0.08em] text-[#0a0c1e] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-35 sm:py-4 sm:text-sm"><Flame size={17} fill="currentColor" />FORMAZIONE CONSIGLIATA <ArrowRight size={17} /></button></div>
       </div>}
@@ -667,11 +664,10 @@ export default function Home() {
             <span className="absolute bottom-3 right-5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">A S TRONZO · {currentFormation.name}</span>
           </section>
           <section aria-label="Panchina consigliata" className="mt-4 rounded-[24px] border border-white/[0.08] bg-[#10132a] p-3.5 sm:p-5">
-            <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xs font-black uppercase tracking-[0.14em] text-white sm:text-sm">Panchina consigliata</h2><p className="mt-1 text-[9px] leading-4 text-white/45">Fino a 7 riserve: copertura ruoli, titolarità e valore atteso. Infortunati e squalificati esclusi.</p></div><span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[8px] font-bold text-white/45">{benchAdvice.length}/7 disponibili</span></div>
-            {benchAdvice.length ? <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">{benchAdvice.map(({ player, position, flexible }, index) => <li key={player.id} className="min-w-0 rounded-2xl border border-white/[0.07] bg-[#181b36] p-2.5 sm:p-3"><div className="flex items-center justify-between gap-1"><span className="text-[8px] font-black uppercase tracking-wider text-white/35">{index + 1}ª riserva</span><span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black ${POSITION_COLORS[position]}`}>{flexible ? "JOLLY" : position}</span></div><p className="mt-2 truncate text-[11px] font-black text-white" title={player.name}>{player.name}</p><p className="truncate text-[8px] text-white/40">{player.team}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-md border px-1.5 py-1 text-[8px] font-bold ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titol.</span><span className="rounded-md bg-white/[0.06] px-1.5 py-1 text-[8px] font-bold text-white/65">MV {player.mv.toFixed(2)}</span></div><p className="mt-1.5 text-[8px] font-bold text-violet-200">Valore atteso {getExpectedPlayerValue(player).toFixed(2)}</p></li>)}</ol> : <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[10px] text-white/45">Non ci sono altri giocatori disponibili in panchina.</p>}
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xs font-black uppercase tracking-[0.14em] text-white sm:text-sm">Panchina consigliata</h2><p className="mt-1 text-[9px] leading-4 text-white/45">Fino a 7 riserve: copertura ruoli, titolarità e voto medio atteso. Infortunati e squalificati esclusi.</p></div><span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[8px] font-bold text-white/45">{benchAdvice.length}/7 disponibili</span></div>
+            {benchAdvice.length ? <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">{benchAdvice.map(({ player, position, flexible }, index) => <li key={player.id} className="min-w-0 rounded-2xl border border-white/[0.07] bg-[#181b36] p-2.5 sm:p-3"><div className="flex items-center justify-between gap-1"><span className="text-[8px] font-black uppercase tracking-wider text-white/35">{index + 1}ª riserva</span><span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black ${POSITION_COLORS[position]}`}>{flexible ? "JOLLY" : position}</span></div><p className="mt-2 truncate text-[11px] font-black text-white" title={player.name}>{player.name}</p><p className="truncate text-[8px] text-white/40">{player.team}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-md border px-1.5 py-1 text-[8px] font-bold ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titol.</span><span className="rounded-md bg-white/[0.06] px-1.5 py-1 text-[8px] font-bold text-white/65">MV {player.mv.toFixed(2)}</span></div><p className="mt-1.5 text-[8px] font-bold text-violet-200">Voto atteso {getExpectedPlayerValue(player).toFixed(2)}</p></li>)}</ol> : <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[10px] text-white/45">Non ci sono altri giocatori disponibili in panchina.</p>}
           </section>
-          <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-[#151732] p-3 sm:grid-cols-4 sm:gap-3 sm:p-4"><Metric label="xG totali" value={totalXg.toFixed(2)} accent="text-[#ffe85e]" /><Metric label="xA totali" value={totalXa.toFixed(2)} accent="text-sky-200" /><Metric label="Titol. media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" /><Metric label="Valore atteso" value={currentExpectedValue.toFixed(2)} accent="text-violet-200" /></section>
-          <section aria-label="Punteggio potenziale squadra" className="mt-3 rounded-[24px] border border-[#ffe85e]/20 bg-[linear-gradient(135deg,rgba(255,232,94,.10),rgba(21,23,50,.92)_58%)] p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#ffe85e]">Punteggio potenziale squadra</p><p className="mt-1 text-[9px] leading-4 text-white/45">Voti attesi + 2 punti per gol (xG) + 1 per assist (xA){defenseModifier ? " + modificatore atteso" : ""}, ponderati per la probabilità di presenza.</p></div><div className="text-right"><p className="text-3xl font-black leading-none text-white sm:text-4xl">{expectedTeamScore.toFixed(1)}<span className="ml-1 text-xs font-bold text-white/40">pt</span></p><p className="mt-1 text-[8px] font-bold uppercase tracking-wider text-white/35">stima su {starters.length} titolari</p></div></div><div className="mt-4 flex items-center justify-between gap-3"><div><p className="text-[10px] font-black text-white">{expectedTeamGoals} gol di soglia previsti</p><p className="mt-1 text-[8px] text-white/45">Primo gol a 66 pt, poi uno ogni 6 · {pointsToNextGoal > 0 ? `${pointsToNextGoal.toFixed(1)} pt al prossimo gol (soglia ${nextGoalThreshold})` : `Soglia ${nextGoalThreshold} raggiunta`}</p></div><span className="shrink-0 rounded-xl border border-[#ffe85e]/20 bg-[#ffe85e]/10 px-3 py-2 text-[10px] font-black text-[#ffe85e]">{expectedOffensiveBonusPoints.toFixed(1)} pt bonus attesi</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30" role="progressbar" aria-label="Avanzamento verso la prossima soglia gol" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scoreProgress)}><div className="h-full rounded-full bg-[#ffe85e] transition-[width] duration-500" style={{ width: `${scoreProgress}%` }} /></div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-medium text-white/40"><span>Voti attesi {expectedBaseRating.toFixed(1)}</span><span>Bonus offensivi {expectedOffensiveBonusPoints.toFixed(1)}</span>{defenseModifier && <span>Mod. difesa {currentModifierBonus.toFixed(1)}</span>}</div></section>
+          <section aria-label="Risultato probabile" className="mt-3 rounded-[24px] border border-[#ffe85e]/20 bg-[linear-gradient(135deg,rgba(255,232,94,.10),rgba(21,23,50,.92)_58%)] p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#ffe85e]">Risultato probabile</p><p className="mt-1 text-[9px] leading-4 text-white/45">Media voto dei titolari ponderata per la probabilità di presenza{defenseModifier ? " + modificatore difesa atteso" : ""}.</p></div><div className="text-right"><p className="text-3xl font-black leading-none text-white sm:text-4xl">{expectedTeamGoals}<span className="ml-1 text-xs font-bold text-white/40">gol</span></p><p className="mt-1 text-[8px] font-bold uppercase tracking-wider text-white/35">stima su {starters.length} titolari</p></div></div><div className="mt-4 flex items-center justify-between gap-3"><div><p className="text-[10px] font-black text-white">{expectedTeamGoals} gol stimati per la tua squadra</p><p className="mt-1 text-[8px] text-white/45">Primo gol a 66 pt, poi uno ogni 6 · {pointsToNextGoal > 0 ? `${pointsToNextGoal.toFixed(1)} pt al prossimo gol (soglia ${nextGoalThreshold})` : `Soglia ${nextGoalThreshold} raggiunta`}</p></div><span className="shrink-0 rounded-xl border border-[#ffe85e]/20 bg-[#ffe85e]/10 px-3 py-2 text-[10px] font-black text-[#ffe85e]">{expectedAttendance.toFixed(1)} / {starters.length} presenze</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30" role="progressbar" aria-label="Avanzamento verso la prossima soglia gol" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scoreProgress)}><div className="h-full rounded-full bg-[#ffe85e] transition-[width] duration-500" style={{ width: `${scoreProgress}%` }} /></div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-medium text-white/40"><span>Media voto {expectedAverageRating.toFixed(2)}</span><span>Punteggio atteso {expectedTeamScore.toFixed(1)} pt</span>{defenseModifier && <span>Mod. difesa {currentModifierBonus.toFixed(1)}</span>}</div></section>
           {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media 3 migliori difensori + portiere: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[10px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}
           <p className="mt-3 text-center text-[9px] text-white/35">Formazione calcolata soltanto sui {squad.length} giocatori riconosciuti nella tua rosa. Le statistiche sono illustrative.</p>
         </div>
@@ -682,6 +678,3 @@ export default function Home() {
   )
 }
 
-function Metric({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return <div className="min-w-0 rounded-xl border border-white/[0.05] bg-white/[0.025] p-2.5 sm:p-3"><p className="truncate text-[8px] font-bold uppercase tracking-widest text-white/40 sm:text-[9px]">{label}</p><p className={`mt-1 text-lg font-black sm:text-xl ${accent}`}>{value}</p></div>
-}

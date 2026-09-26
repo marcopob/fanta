@@ -176,6 +176,47 @@
 }
 
 :where([class*="text-["]) { font-size: calc(1em + 2px); }
+
+@keyframes intro-football-flight {
+  0% { transform: translate3d(calc(-50% - 28vw), calc(-50% + 25svh), 0) scale(0.12) rotate(-260deg); }
+  24% { transform: translate3d(calc(-50% - 19vw), calc(-50% + 1svh), 0) scale(0.38) rotate(-100deg); }
+  52% { transform: translate3d(calc(-50% + 15vw), calc(-50% - 17svh), 0) scale(0.72) rotate(140deg); }
+  76% { transform: translate3d(calc(-50% + 10vw), calc(-50% - 6svh), 0) scale(1.04) rotate(370deg); }
+  100% { transform: translate3d(-50%, calc(-50% + 16svh), 0) scale(1.28) rotate(690deg); }
+}
+
+@keyframes intro-confetti-fall {
+  0% { transform: translate3d(0, -12vh, 0) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.9; }
+  100% { transform: translate3d(var(--confetti-drift), 112vh, 0) rotate(var(--confetti-spin)); opacity: 0.15; }
+}
+
+@keyframes intro-logo-reveal {
+  from { opacity: 0; transform: translateY(14px) scale(0.92); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes intro-trail-draw {
+  to { stroke-dashoffset: 0; opacity: 0.75; }
+}
+
+@keyframes intro-trail-glow {
+  0%, 18% { stroke-dashoffset: 110; opacity: 0; }
+  48% { opacity: 0.55; }
+  100% { stroke-dashoffset: 0; opacity: 0.12; }
+}
+
+.intro-football-flight { clip-path: circle(40.5% at 50% 50%); animation: intro-football-flight 2.8s cubic-bezier(0.16, 0.72, 0.24, 1) both; }
+.intro-confetti-fall { animation-name: intro-confetti-fall; animation-timing-function: linear; animation-iteration-count: infinite; }
+.intro-logo-reveal { animation: intro-logo-reveal 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.intro-trail-draw { stroke-dashoffset: 110; opacity: 0; animation: intro-trail-draw 2.45s cubic-bezier(0.3, 0.2, 0.3, 1) both; }
+.intro-trail-glow { filter: blur(4px); stroke-dashoffset: 110; opacity: 0; animation: intro-trail-glow 2.8s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-football-flight, .intro-confetti-fall, .intro-logo-reveal, .intro-trail-draw, .intro-trail-glow { animation: none; }
+  .intro-football-flight { transform: translate3d(-50%, calc(-50% + 16svh), 0) scale(1.28); }
+  .intro-trail-draw { stroke-dashoffset: 0; opacity: 0.55; }
+}
 :where([class*="text-[8px]"]) { font-size: 10px; }
 :where([class*="text-[9px]"]) { font-size: 11px; }
 :where([class*="text-[10px]"]) { font-size: 12px; }

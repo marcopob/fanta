@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import type { ChangeEvent } from "react"
+import type { ChangeEvent, CSSProperties } from "react"
 import Image from "next/image"
 import { read as readWorkbook, utils as workbookUtils } from "xlsx"
 import {
@@ -423,6 +423,66 @@ function FantaVibesLogo({ large = false }: { large?: boolean }) {
   )
 }
 
+function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
+  const [arrived, setArrived] = useState(false)
+  const confettiColors = ["#ffe85e", "#ffffff", "#68e1ff", "#ff8a65", "#b69cff", "#8affc1"]
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setArrived(true)
+      return
+    }
+    const timer = window.setTimeout(() => setArrived(true), 2800)
+    return () => window.clearTimeout(timer)
+  }, [])
+
+  return (
+    <section aria-label="Benvenuto in Fanta Vibes" className="fixed inset-0 z-[100] isolate min-h-[100svh] overflow-hidden bg-[#0754bd] text-white">
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_50%_42%,rgba(96,190,255,0.78)_0%,rgba(25,116,229,0.58)_36%,rgba(4,42,117,0.98)_100%)]" />
+      <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[36svh] bg-gradient-to-t from-[#031942]/60 to-transparent" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
+        {Array.from({ length: 34 }, (_, index) => (
+          <span
+            key={index}
+            className={`intro-confetti-fall absolute top-0 ${index % 3 === 0 ? "h-2.5 w-1 rounded-full" : index % 3 === 1 ? "h-3 w-1.5 rounded-sm" : "size-1.5 rounded-full"}`}
+            style={{
+              left: `${(index * 37 + 5) % 100}%`,
+              backgroundColor: confettiColors[index % confettiColors.length],
+              animationDelay: `${-((index * 13) % 95) / 10}s`,
+              animationDuration: `${7 + (index % 7)}s`,
+              "--confetti-drift": `${((index * 23) % 180) - 90}px`,
+              "--confetti-spin": `${(index % 2 ? 1 : -1) * (540 + index * 13)}deg`,
+            } as CSSProperties}
+          />
+        ))}
+      </div>
+
+      <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible">
+        <path d="M 21 76 C 28 47, 63 20, 66 34 C 69 47, 59 54, 50 63" fill="none" stroke="rgba(255,255,255,.75)" strokeWidth=".28" strokeLinecap="round" strokeDasharray="110" className="intro-trail-draw" />
+        <path d="M 21 76 C 28 47, 63 20, 66 34 C 69 47, 59 54, 50 63" fill="none" stroke="rgba(113,220,255,.85)" strokeWidth="1.2" strokeLinecap="round" strokeDasharray="110" className="intro-trail-glow" />
+      </svg>
+
+      <div className="intro-football-flight absolute left-1/2 top-1/2 z-10 size-36 sm:size-48" aria-hidden="true">
+        <Image src="/intro-football.png" alt="" fill priority sizes="(max-width: 640px) 144px, 192px" className="object-contain drop-shadow-[0_18px_24px_rgba(1,19,61,0.42)]" />
+      </div>
+
+      <div className="absolute inset-x-0 top-[20%] z-20 flex justify-center px-5">
+        {arrived && (
+          <div className="intro-logo-reveal flex flex-col items-center text-center">
+            <h1 className="sr-only">Fanta Vibes</h1>
+            <div aria-hidden="true"><FantaVibesLogo large /></div>
+            <p className="-mt-1 text-xs font-semibold tracking-[0.24em] text-white/75">IL FANTACALCIO, CON PIÙ VIBES</p>
+            <button type="button" onClick={onEnter} className="mt-7 inline-flex min-h-12 min-w-40 items-center justify-center gap-3 rounded-full border border-white/30 bg-[#ffe85e] px-8 py-3 text-base font-black tracking-[0.18em] text-[#082453] shadow-[0_10px_38px_rgba(255,232,94,0.32)] transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white">
+              ENTRA <ArrowRight size={20} strokeWidth={2.5} />
+            </button>
+          </div>
+        )}
+      </div>
+      <p className="sr-only" aria-live="polite">{arrived ? "Fanta Vibes è pronto. Premi Entra per continuare." : "Un pallone sta arrivando: Fanta Vibes si sta preparando."}</p>
+    </section>
+  )
+}
+
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
   const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
   const hasPortrait = PLAYER_DB.some((catalogPlayer) => catalogPlayer.id === player.id)
@@ -551,6 +611,7 @@ function SettingsPanel({ mode, setMode, defenseModifier, setDefenseModifier, avo
 
 export default function Home() {
   const [page, setPage] = useState<Page>("home")
+  const [introEntered, setIntroEntered] = useState(false)
   const [squad, setSquad] = useState<Player[]>([])
   const [mode, setMode] = useState<Mode>("Classic")
   const [defenseModifier, setDefenseModifier] = useState(true)
@@ -763,6 +824,8 @@ export default function Home() {
     setSelectedPlayer(null)
     setPage("home")
   }
+
+  if (!introEntered) return <FantaVibesIntro onEnter={() => setIntroEntered(true)} />
 
   return (
     <main className="min-h-[100svh] bg-[#0a0c1e] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">

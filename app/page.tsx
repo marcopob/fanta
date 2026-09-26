@@ -38,6 +38,7 @@ type Player = {
   hype: number
   mv: number
   inj: boolean
+  suspended?: boolean
   reason: string
   opponent: string
 }
@@ -103,9 +104,13 @@ function normalizeName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "")
 }
 
+function isUnavailable(player: Player) {
+  return player.inj || player.suspended === true
+}
+
 function getAvailability(player: Player) {
-  const injuryMultiplier = player.inj ? 0.35 : 1
-  return (player.titolarita / 100) * injuryMultiplier
+  if (isUnavailable(player)) return 0
+  return player.titolarita / 100
 }
 
 function getExpectedPlayerValue(player: Player) {
@@ -140,12 +145,13 @@ function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidR
   const lineup: Lineup = { P: [], D: [], C: [], A: [] }
   const requested: Record<Position, number> = { P: 1, D: formation.defense, C: formation.midfield, A: formation.attack }
   const positions = (Object.keys(requested) as Position[]).filter((position) => requested[position] > 0)
-  const candidateCount = Object.fromEntries(positions.map((position) => [position, squad.filter((player) => canPlay(player, position, mode)).length])) as Record<Position, number>
+  const availableSquad = squad.filter((player) => !isUnavailable(player))
+  const candidateCount = Object.fromEntries(positions.map((position) => [position, availableSquad.filter((player) => canPlay(player, position, mode)).length])) as Record<Position, number>
   positions.sort((a, b) => candidateCount[a] / requested[a] - candidateCount[b] / requested[b])
   const used = new Set<string>()
 
   for (const position of positions) {
-    const candidates = squad.filter((player) => !used.has(player.id) && canPlay(player, position, mode))
+    const candidates = availableSquad.filter((player) => !used.has(player.id) && canPlay(player, position, mode))
     const safe = avoidRisk ? candidates.filter((player) => player.titolarita >= 60) : candidates
     const orderedCandidates = (safe.length >= requested[position] ? safe : candidates).sort((a, b) => {
       const aDefenderModifierValue = considerModifier && position === "D" ? Math.max(0, a.mv - 6) * getAvailability(a) * 0.08 : 0
@@ -200,6 +206,19 @@ function matchRosterFromOcr(text: string): Player[] {
 const NAME_HEADERS = new Set(["giocatore", "calciatore", "nome", "nominativo", "nomegiocatore", "nomecalciatore", "player", "playername", "atleta"])
 const TEAM_HEADERS = new Set(["squadra", "teamsquadra", "club", "clubsquadra", "squadraappartenenza"])
 const ROLE_HEADERS = new Set(["ruolo", "ruoliclassic", "ruolomantra", "ruoli", "posizione", "r", "mantra"])
+const INJURY_HEADERS = new Set(["infortunio", "infortunata", "infortunato", "infortunatao", "injury", "injured", "indisponibile", "out"])
+const SUSPENSION_HEADERS = new Set(["squalifica", "squalificato", "squalificata", "suspended", "suspension"])
+const STATUS_HEADERS = new Set(["stato", "status", "note", "disponibilita", "disponibilitagiocatore"])
+
+function parseAvailabilityFlag(value: string | undefined, kind: "injury" | "suspension", explicitField = false) {
+  const normalized = normalizeName(value ?? "")
+  if (!normalized) return undefined
+  const unavailablePattern = kind === "injury" ? /infortun|injur|indisponibil/ : /squalific|suspend|sospes/
+  if (unavailablePattern.test(normalized) || (kind === "injury" && normalized === "out")) return true
+  if (explicitField && ["si", "yes", "true", "1", "x"].includes(normalized)) return true
+  if (["no", "false", "0", "disponibile", "disponibilita", "regolare"].includes(normalized)) return false
+  return undefined
+}
 
 function getImportedRole(roleText: string, existing?: Player) {
   const tokens = roleText.toUpperCase().match(/POR|PC|DC|DD|DS|[PMDCETWA]/g) ?? []
@@ -212,16 +231,24 @@ function getImportedRole(roleText: string, existing?: Player) {
   return { position: position ?? "C", mantraRoles: mantraRoles.length ? mantraRoles : existing?.mantraRoles ?? [] }
 }
 
-function createImportedPlayer(name: string, team: string, roleText: string): Player {
+function createImportedPlayer(name: string, team: string, roleText: string, inj?: boolean, suspended?: boolean): Player {
   const existing = exactPlayerByName(name)
   const importedRole = getImportedRole(roleText, existing)
   if (existing) {
-    return { ...existing, name: name.trim(), team: team || existing.team, position: importedRole.position, mantraRoles: importedRole.mantraRoles }
+    return {
+      ...existing,
+      name: name.trim(),
+      team: team || existing.team,
+      position: importedRole.position,
+      mantraRoles: importedRole.mantraRoles,
+      inj: inj ?? existing.inj,
+      suspended: suspended ?? existing.suspended ?? false,
+    }
   }
   const id = `import-${normalizeName(name)}`
   return {
     id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles,
-    titolarita: 50, xg: 0, xa: 0, hype: 0, mv: 6, inj: false,
+    titolarita: 50, xg: 0, xa: 0, hype: 0, mv: 6, inj: inj ?? false, suspended: suspended ?? false,
     reason: "Statistiche non disponibili per questo giocatore nel catalogo locale.", opponent: "—",
   }
 }
@@ -232,12 +259,12 @@ function parseRosterRows(rows: unknown[][]) {
   const seenNames = new Set<string>()
   const players: Player[] = []
 
-  const addPlayer = (name: string, team = "", roleText = "") => {
+  const addPlayer = (name: string, team = "", roleText = "", inj?: boolean, suspended?: boolean) => {
     const cleanName = name.replace(/^[\s\d.#-]+|[\s\d.#-]+$/g, "").trim()
     const key = normalizeName(cleanName)
     if (key.length < 2 || seenNames.has(key)) return
     seenNames.add(key)
-    players.push(createImportedPlayer(cleanName, team, roleText))
+    players.push(createImportedPlayer(cleanName, team, roleText, inj, suspended))
   }
 
   if (headerIndex >= 0) {
@@ -248,10 +275,16 @@ function parseRosterRows(rows: unknown[][]) {
     if (nameIndex < 0 && firstNameIndex >= 0 && lastNameIndex >= 0) nameIndex = firstNameIndex
     const teamIndex = headers.findIndex((header) => TEAM_HEADERS.has(header))
     const roleIndexes = headers.map((header, index) => ROLE_HEADERS.has(header) ? index : -1).filter((index) => index >= 0)
+    const injuryIndex = headers.findIndex((header) => INJURY_HEADERS.has(header))
+    const suspensionIndex = headers.findIndex((header) => SUSPENSION_HEADERS.has(header))
+    const statusIndexes = headers.map((header, index) => STATUS_HEADERS.has(header) ? index : -1).filter((index) => index >= 0)
     for (const row of normalizedRows.slice(headerIndex + 1)) {
       const name = firstNameIndex >= 0 && lastNameIndex >= 0 ? `${row[firstNameIndex] ?? ""} ${row[lastNameIndex] ?? ""}`.trim() : row[nameIndex] ?? ""
       if (!name) continue
-      addPlayer(name, teamIndex >= 0 ? row[teamIndex] : "", roleIndexes.map((index) => row[index] ?? "").join(" "))
+      const statusText = statusIndexes.map((index) => row[index] ?? "").join(" ")
+      const importedInjury = parseAvailabilityFlag(injuryIndex >= 0 ? row[injuryIndex] : undefined, "injury", injuryIndex >= 0) ?? parseAvailabilityFlag(statusText, "injury")
+      const importedSuspension = parseAvailabilityFlag(suspensionIndex >= 0 ? row[suspensionIndex] : undefined, "suspension", suspensionIndex >= 0) ?? parseAvailabilityFlag(statusText, "suspension")
+      addPlayer(name, teamIndex >= 0 ? row[teamIndex] : "", roleIndexes.map((index) => row[index] ?? "").join(" "), importedInjury, importedSuspension)
     }
   } else {
     for (const row of normalizedRows) {
@@ -312,6 +345,7 @@ function isStoredPlayer(value: unknown): value is Player {
     && ["P", "D", "C", "A"].includes(player.position ?? "") && Array.isArray(player.mantraRoles)
     && typeof player.titolarita === "number" && typeof player.xg === "number" && typeof player.xa === "number"
     && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
+    && (player.suspended === undefined || typeof player.suspended === "boolean")
     && typeof player.reason === "string" && typeof player.opponent === "string"
 }
 
@@ -322,7 +356,7 @@ function getTitolaritaStyle(value: number) {
 }
 
 function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
-  const isRisk = player.titolarita < 60 || player.inj
+  const isRisk = player.titolarita < 60 || isUnavailable(player)
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
       <section role="dialog" aria-modal="true" aria-labelledby="player-modal-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-t-[28px] border border-white/10 bg-[#151732] shadow-2xl sm:rounded-[28px]">
@@ -354,7 +388,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
 function PitchPlayer({ player, onSelect }: { player: Player; onSelect: (player: Player) => void }) {
   const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
   return (
-    <button type="button" onClick={() => onSelect(player)} aria-label={`Apri dettagli ${player.name}, ${player.titolarita}% titolarità`} className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-1.5 text-center transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffe85e] ${player.inj ? "opacity-30 grayscale" : ""}`}>
+    <button type="button" onClick={() => onSelect(player)} aria-label={`Apri dettagli ${player.name}, ${player.titolarita}% titolarità`} className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-1.5 text-center transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffe85e] ${isUnavailable(player) ? "opacity-30 grayscale" : ""}`}>
       <span className={`relative flex size-10 items-center justify-center rounded-full border-2 bg-[#122b20] text-[11px] font-black shadow-lg sm:size-12 sm:text-xs ${player.titolarita < 60 ? "border-dashed border-rose-300" : "border-white/65 group-hover:border-[#ffe85e]"}`}>
         {initials}
         <span className={`absolute -right-3 -top-2 rounded-full border px-1.5 py-0.5 text-[8px] font-black leading-none ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}%</span>
@@ -524,7 +558,7 @@ export default function Home() {
       setSquad(importedPlayers)
       setPage("roster")
       setScanNotice(importedPlayers.length
-        ? `${importedPlayers.length} ${importedPlayers.length === 1 ? "giocatore importato" : "giocatori importati"} dal file. Nessun nome viene abbinato per somiglianza.`
+        ? `${importedPlayers.length} ${importedPlayers.length === 1 ? "giocatore importato" : "giocatori importati"} dal file. Le colonne Infortunato/Squalificato escludono gli indisponibili dalla formazione consigliata.`
         : "Nessun giocatore trovato nel file. Verifica che contenga una colonna Giocatore o Nome e riprova.")
     } catch {
       setSquad([])

@@ -103,8 +103,14 @@ function normalizeName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "")
 }
 
-function getScore(player: Player) {
-  return (player.xg + player.xa) * (player.titolarita / 100)
+function getAvailability(player: Player) {
+  const injuryMultiplier = player.inj ? 0.35 : 1
+  return (player.titolarita / 100) * injuryMultiplier
+}
+
+function getExpectedPlayerValue(player: Player) {
+  const perAppearanceValue = 0.2 + player.xg * 3 + player.xa + Math.max(0, player.mv - 6) * 0.25 + player.hype / 2000
+  return perAppearanceValue * getAvailability(player)
 }
 
 function canPlay(player: Player, position: Position, mode: Mode) {
@@ -116,26 +122,48 @@ function canPlay(player: Player, position: Position, mode: Mode) {
   return roles.some((role) => ["pc", "a", "w"].includes(role))
 }
 
-function selectPlayers(pool: Player[], position: Position, count: number, mode: Mode, avoidRisk: boolean, excluded: Set<string>) {
-  const candidates = pool.filter((player) => !excluded.has(player.id) && canPlay(player, position, mode)).sort((a, b) => getScore(b) - getScore(a))
-  const safePlayers = avoidRisk ? candidates.filter((player) => player.titolarita >= 60) : candidates
-  const selected = safePlayers.slice(0, count)
-  if (selected.length < count) {
-    const selectedIds = new Set(selected.map((player) => player.id))
-    selected.push(...candidates.filter((player) => !selectedIds.has(player.id)).slice(0, count - selected.length))
-  }
-  return selected
+type FormationAdvice = { index: number; lineup: Lineup; playerValue: number; modifierBonus: number; score: number; filledSlots: number }
+
+function getModifierBonus(defenders: Player[]) {
+  if (defenders.length < 3) return 0
+  const averageMv = defenders.reduce((total, player) => total + player.mv, 0) / defenders.length
+  return averageMv >= 7 ? 3 : averageMv >= 6 ? 1 : 0
 }
 
-function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidRisk: boolean): Lineup {
-  const goalkeeper = squad.find((player) => canPlay(player, "P", mode))
-  const lineup: Lineup = { P: goalkeeper ? [goalkeeper] : [], D: [], C: [], A: [] }
-  const used = new Set(lineup.P.map((player) => player.id))
-  for (const [position, count] of [["A", formation.attack], ["C", formation.midfield], ["D", formation.defense]] as const) {
-    lineup[position] = selectPlayers(squad, position, count, mode, avoidRisk, used)
+function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidRisk: boolean, considerModifier: boolean): Lineup {
+  const lineup: Lineup = { P: [], D: [], C: [], A: [] }
+  const requested: Record<Position, number> = { P: 1, D: formation.defense, C: formation.midfield, A: formation.attack }
+  const positions = (Object.keys(requested) as Position[]).filter((position) => requested[position] > 0)
+  const candidateCount = Object.fromEntries(positions.map((position) => [position, squad.filter((player) => canPlay(player, position, mode)).length])) as Record<Position, number>
+  positions.sort((a, b) => candidateCount[a] / requested[a] - candidateCount[b] / requested[b])
+  const used = new Set<string>()
+
+  for (const position of positions) {
+    const candidates = squad.filter((player) => !used.has(player.id) && canPlay(player, position, mode))
+    const safe = avoidRisk ? candidates.filter((player) => player.titolarita >= 60) : candidates
+    const orderedCandidates = (safe.length >= requested[position] ? safe : candidates).sort((a, b) => {
+      const aDefenderModifierValue = considerModifier && position === "D" ? Math.max(0, a.mv - 6) * getAvailability(a) * 0.08 : 0
+      const bDefenderModifierValue = considerModifier && position === "D" ? Math.max(0, b.mv - 6) * getAvailability(b) * 0.08 : 0
+      return getExpectedPlayerValue(b) + bDefenderModifierValue - getExpectedPlayerValue(a) - aDefenderModifierValue
+    })
+    lineup[position] = orderedCandidates.slice(0, requested[position])
     lineup[position].forEach((player) => used.add(player.id))
   }
   return lineup
+}
+
+function evaluateFormation(squad: Player[], formation: Formation, index: number, mode: Mode, avoidRisk: boolean, considerModifier: boolean): FormationAdvice {
+  const lineup = getBestLineup(squad, formation, mode, avoidRisk, considerModifier)
+  const players = Object.values(lineup).flat()
+  const playerValue = players.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
+  const modifierBonus = considerModifier ? getModifierBonus(lineup.D) * (lineup.D.length ? lineup.D.reduce((total, player) => total + getAvailability(player), 0) / lineup.D.length : 0) : 0
+  const filledSlots = players.length
+  return { index, lineup, playerValue, modifierBonus, score: playerValue + modifierBonus, filledSlots }
+}
+
+function recommendFormation(squad: Player[], formations: Formation[], mode: Mode, avoidRisk: boolean, considerModifier: boolean) {
+  const options = formations.map((formation, index) => evaluateFormation(squad, formation, index, mode, avoidRisk, considerModifier))
+  return options.sort((a, b) => b.score - a.score || b.filledSlots - a.filledSlots || b.playerValue - a.playerValue)[0]
 }
 
 function exactPlayerByName(name: string): Player | undefined {
@@ -407,9 +435,19 @@ export default function Home() {
   }, [hydrated, mode, defenseModifier, avoidRisk, teamName, squad, page])
 
   const formations = mode === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS
+  const formationAdvice = useMemo(() => ({
+    withoutModifier: recommendFormation(squad, formations, mode, avoidRisk, false),
+    withModifier: recommendFormation(squad, formations, mode, avoidRisk, true),
+  }), [squad, formations, mode, avoidRisk])
+  const recommendedAdvice = defenseModifier ? formationAdvice.withModifier : formationAdvice.withoutModifier
+  const recommendedIndex = recommendedAdvice.index
   const currentFormation = formations[formationIndex] ?? formations[0]
-  const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk), [squad, currentFormation, mode, avoidRisk])
+  const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk, defenseModifier), [squad, currentFormation, mode, avoidRisk, defenseModifier])
   const starters = useMemo(() => Object.values(lineup).flat(), [lineup])
+  const currentExpectedValue = starters.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
+  const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D) * (lineup.D.length ? lineup.D.reduce((total, player) => total + getAvailability(player), 0) / lineup.D.length : 0) : 0
+  const modifierGain = formationAdvice.withModifier.score - formationAdvice.withoutModifier.score
+  const modifierChangesPlan = formationAdvice.withModifier.index !== formationAdvice.withoutModifier.index
   const riskPlayers = starters.filter((player) => player.titolarita < 60 || player.inj)
   const fallbackPlayers = starters.filter((player) => avoidRisk && player.titolarita < 60)
   const missingStarters = Math.max(0, 11 - starters.length)
@@ -418,7 +456,7 @@ export default function Home() {
   const averageTitolarita = starters.length ? starters.reduce((sum, player) => sum + player.titolarita, 0) / starters.length : 0
   const defenders = lineup.D
   const defenderAverage = defenders.length ? defenders.reduce((sum, player) => sum + player.mv, 0) / defenders.length : 0
-  const defenseBonus = defenderAverage >= 7 ? 3 : defenderAverage >= 6 ? 1 : 0
+  const defenseBonus = getModifierBonus(defenders)
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -519,7 +557,7 @@ export default function Home() {
           {scanNotice && <p role="status" className="text-center text-[10px] leading-4 text-amber-100/80">{scanNotice}</p>}
           <p className="text-center text-[8px] text-white/25">Le tue preferenze vengono salvate automaticamente su questo dispositivo.</p>
         </div>
-        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { setMode(value); setFormationIndex(0) }} defenseModifier={defenseModifier} setDefenseModifier={setDefenseModifier} avoidRisk={avoidRisk} setAvoidRisk={setAvoidRisk} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
       </div>}
 
       {page === "roster" && <div className="min-h-[100svh] px-4 pb-28 sm:px-8 sm:pb-32">
@@ -529,24 +567,25 @@ export default function Home() {
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-xs leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
           {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><span className={`flex size-10 shrink-0 items-center justify-center rounded-xl border text-xs font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45">Classic {player.position} <span className="mx-1 text-white/20">·</span> Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span className="text-[9px] font-bold text-[#ffe85e]">xG {player.xg.toFixed(2)}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
         </section>
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.07] bg-[#0a0c1e]/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-8"><button type="button" disabled={!squad.length} onClick={() => { setFormationIndex(0); setPage("formation") }} className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl bg-[#ffe85e] px-5 py-3.5 text-xs font-black tracking-[0.08em] text-[#0a0c1e] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-35 sm:py-4 sm:text-sm"><Flame size={17} fill="currentColor" />FORMAZIONE CONSIGLIATA <ArrowRight size={17} /></button></div>
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.07] bg-[#0a0c1e]/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-8"><button type="button" disabled={!squad.length} onClick={() => { setFormationIndex(recommendedIndex); setPage("formation") }} className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl bg-[#ffe85e] px-5 py-3.5 text-xs font-black tracking-[0.08em] text-[#0a0c1e] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-35 sm:py-4 sm:text-sm"><Flame size={17} fill="currentColor" />FORMAZIONE CONSIGLIATA <ArrowRight size={17} /></button></div>
       </div>}
 
       {page === "formation" && <div className="min-h-[100svh] px-3 pb-8 sm:px-8">
         <header className="mx-auto flex w-full max-w-6xl items-center justify-between border-b border-white/[0.07] py-3 sm:py-4"><button type="button" onClick={() => setPage("roster")} className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={15} /> ROSA <span className="hidden sm:inline">· {squad.length}</span></button><div className="min-w-0 px-2 text-center"><h1 className="truncate text-sm font-black sm:text-lg">{teamName.trim() || "La tua squadra"}</h1><p className="text-[8px] font-bold uppercase tracking-widest text-[#ffe85e]">{mode} · {currentFormation.name}</p></div><button type="button" aria-label="Apri impostazioni formazione" onClick={() => setSettingsOpen(true)} className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={17} /></button></header>
         <div className="mx-auto max-w-6xl pt-3 sm:pt-5"><div className="mb-2 flex items-center justify-between gap-2"><p className="text-[9px] font-black uppercase tracking-[0.17em] text-white/50">Scegli modulo <span className="text-[#ffe85e]">· {mode}</span></p><span className="shrink-0 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-2.5 py-1 text-[8px] font-black tracking-wider text-[#ffe85e]">{mode.toUpperCase()}</span></div>
-          <nav aria-label={`Moduli ${mode}`} className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{formations.map((formation, index) => <button key={formation.name} type="button" aria-pressed={index === formationIndex} onClick={() => setFormationIndex(index)} className={`shrink-0 rounded-2xl border px-5 py-3 text-sm font-black tracking-wide transition ${index === formationIndex ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e] shadow-[0_5px_22px_rgba(255,232,94,0.13)]" : "border-white/15 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-white"}`}>{formation.name}</button>)}</nav>
+          <nav aria-label={`Moduli ${mode}`} className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{formations.map((formation, index) => <button key={formation.name} type="button" aria-pressed={index === formationIndex} onClick={() => setFormationIndex(index)} className={`relative shrink-0 rounded-2xl border px-5 py-3 text-sm font-black tracking-wide transition ${index === formationIndex ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e] shadow-[0_5px_22px_rgba(255,232,94,0.13)]" : "border-white/15 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-white"}`}><span>{formation.name}</span>{index === recommendedIndex && <span className={`ml-2 rounded-full px-1.5 py-0.5 align-middle text-[7px] font-black tracking-wider ${index === formationIndex ? "bg-[#0a0c1e]/10 text-[#0a0c1e]" : "bg-[#ffe85e]/15 text-[#ffe85e]"}`}>CONSIGLIATO</span>}</button>)}</nav>
+          <section aria-label="Confronto strategia modificatore" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#ffe85e]/15 bg-[#ffe85e]/[0.045] px-3.5 py-3"><div className="flex min-w-0 items-start gap-2.5"><ShieldCheck size={17} className="mt-0.5 shrink-0 text-[#ffe85e]" /><div><p className="text-[10px] font-black uppercase tracking-wider text-white">{defenseModifier ? "Miglior modulo con modificatore" : "Miglior modulo senza modificatore"}: <span className="text-[#ffe85e]">{formations[recommendedIndex]?.name}</span></p><p className="mt-1 text-[9px] leading-4 text-white/50">Probabilità di presenza inclusa nella valutazione. {modifierChangesPlan ? `Senza modificatore conviene ${formations[formationAdvice.withoutModifier.index]?.name}; con il modificatore ${formations[formationAdvice.withModifier.index]?.name}.` : `Il modulo migliore resta ${formations[recommendedIndex]?.name} in entrambi gli scenari.`}</p></div></div><div className="shrink-0 rounded-xl border border-white/[0.08] bg-[#151732] px-3 py-2 text-right"><p className="text-[8px] font-bold uppercase tracking-wider text-white/40">Vantaggio mod atteso</p><p className={`text-sm font-black ${modifierGain > 0.01 ? "text-sky-200" : "text-white/55"}`}>{modifierGain > 0.01 ? `+${modifierGain.toFixed(2)} pt` : "non conviene"}</p></div></section>
           {riskPlayers.length > 0 || missingStarters > 0 ? <div role="alert" className="mt-2 flex items-start gap-2.5 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-3.5 py-3 text-[10px] leading-5 text-rose-100 sm:text-xs"><TriangleAlert size={16} className="mt-0.5 shrink-0 text-rose-300" /><div><p className="font-black uppercase tracking-wider">{missingStarters ? `Formazione incompleta · ${missingStarters} ${missingStarters === 1 ? "posto" : "posti"} vuoti` : "Attenzione: rischio formazione"}</p><p className="mt-0.5 text-rose-100/75">{riskPlayers.length ? `Da verificare: ${riskPlayers.map((player) => `${player.name}${player.inj ? " · infortunio" : ` · ${player.titolarita}%`}`).join(", ")}.` : "Carica altri giocatori per completare l'undici."}{fallbackPlayers.length > 0 ? ` Fallback sotto il 60%: ${fallbackPlayers.map((player) => player.name).join(", ")}.` : ""}</p></div></div> : null}
           <section aria-label={`Campo formazione ${currentFormation.name}`} className="relative mt-2 min-h-[65vh] overflow-hidden rounded-[24px] border border-emerald-100/10 bg-[linear-gradient(135deg,#14532d,#166534_48%,#14532d)] shadow-[0_22px_70px_rgba(0,0,0,.32)] sm:mt-3">
             <div className="pointer-events-none absolute inset-2 rounded-[17px] border border-white/20 sm:inset-4" /><div className="pointer-events-none absolute left-2 right-2 top-1/2 border-t border-white/20 sm:left-4 sm:right-4" /><div className="pointer-events-none absolute left-1/2 top-1/2 size-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20 sm:size-28" /><div className="pointer-events-none absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/50" /><div className="pointer-events-none absolute left-1/2 top-2 h-8 w-28 -translate-x-1/2 rounded-b-xl border-x border-b border-white/20 sm:top-4 sm:h-14 sm:w-44" /><div className="pointer-events-none absolute bottom-2 left-1/2 h-8 w-28 -translate-x-1/2 rounded-t-xl border-x border-t border-white/20 sm:bottom-4 sm:h-14 sm:w-44" />
             <div className="relative z-10 grid min-h-[65vh] grid-rows-4 px-2 py-4 sm:px-8 sm:py-6">{(["P", "D", "C", "A"] as Position[]).map((position) => { const players = lineup[position]; return <div key={position} className="flex min-w-0 flex-col items-center justify-center gap-1"><div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.15em] text-white/55 backdrop-blur-sm"><span className={`size-1.5 rounded-full ${position === "A" ? "bg-orange-300" : position === "C" ? "bg-amber-200" : position === "D" ? "bg-emerald-200" : "bg-sky-200"}`} />{position} · {POSITION_NAMES[position]} · {players.length}</div><div className="flex w-full flex-wrap items-center justify-center gap-x-1 gap-y-0.5 sm:gap-x-5">{players.map((player) => <PitchPlayer key={player.id} player={player} onSelect={setSelectedPlayer} />)}</div></div>})}</div>
             <span className="absolute bottom-3 right-5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">A S TRONZO · {currentFormation.name}</span>
           </section>
-          <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-white/[0.07] bg-[#151732] p-3 sm:gap-3 sm:p-4"><Metric label="xG totali" value={totalXg.toFixed(2)} accent="text-[#ffe85e]" /><Metric label="xA totali" value={totalXa.toFixed(2)} accent="text-sky-200" /><Metric label="Titol. media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" /></section>
-          {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media MV difensori: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus demo</p><p className="text-xl font-black text-sky-200">+{defenseBonus}</p></div></section>}
+          <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-[#151732] p-3 sm:grid-cols-4 sm:gap-3 sm:p-4"><Metric label="xG totali" value={totalXg.toFixed(2)} accent="text-[#ffe85e]" /><Metric label="xA totali" value={totalXa.toFixed(2)} accent="text-sky-200" /><Metric label="Titol. media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" /><Metric label="Valore atteso" value={currentExpectedValue.toFixed(2)} accent="text-violet-200" /></section>
+          {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media MV difensori: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[10px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}
           <p className="mt-3 text-center text-[9px] text-white/35">Formazione calcolata soltanto sui {squad.length} giocatori riconosciuti nella tua rosa. Le statistiche sono illustrative.</p>
         </div>
-        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { setMode(value); setFormationIndex(0) }} defenseModifier={defenseModifier} setDefenseModifier={setDefenseModifier} avoidRisk={avoidRisk} setAvoidRisk={setAvoidRisk} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
       </div>}
       {selectedPlayer && page === "formation" && <PlayerModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
     </main>

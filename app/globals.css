@@ -182,7 +182,7 @@
   24% { transform: translate3d(calc(-50% - 19vw), calc(-50% + 1svh), 0) scale(0.38) rotate(-100deg); }
   52% { transform: translate3d(calc(-50% + 15vw), calc(-50% - 17svh), 0) scale(0.72) rotate(140deg); }
   76% { transform: translate3d(calc(-50% + 10vw), calc(-50% - 6svh), 0) scale(1.04) rotate(370deg); }
-  100% { transform: translate3d(-50%, calc(-50% + 16svh), 0) scale(1.28) rotate(690deg); }
+  90%, 100% { transform: translate3d(-50%, calc(-50% + 7svh), 0) scale(1.24) rotate(560deg); }
 }
 
 @keyframes intro-confetti-fall {
@@ -206,15 +206,15 @@
   100% { stroke-dashoffset: 0; opacity: 0.12; }
 }
 
-.intro-football-flight { clip-path: circle(40.5% at 50% 50%); animation: intro-football-flight 2.8s cubic-bezier(0.16, 0.72, 0.24, 1) both; }
+.intro-football-flight { clip-path: circle(40.5% at 50% 50%); animation: intro-football-flight 3.6s cubic-bezier(0.16, 0.72, 0.24, 1) both; }
 .intro-confetti-fall { animation-name: intro-confetti-fall; animation-timing-function: linear; animation-iteration-count: infinite; }
-.intro-logo-reveal { animation: intro-logo-reveal 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.intro-trail-draw { stroke-dashoffset: 110; opacity: 0; animation: intro-trail-draw 2.45s cubic-bezier(0.3, 0.2, 0.3, 1) both; }
-.intro-trail-glow { filter: blur(4px); stroke-dashoffset: 110; opacity: 0; animation: intro-trail-glow 2.8s ease-out both; }
+.intro-logo-reveal { animation: intro-logo-reveal 400ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.intro-trail-draw { stroke-dashoffset: 110; opacity: 0; animation: intro-trail-draw 3.6s cubic-bezier(0.3, 0.2, 0.3, 1) both; }
+.intro-trail-glow { filter: blur(4px); stroke-dashoffset: 110; opacity: 0; animation: intro-trail-glow 3.6s ease-out both; }
 
 @media (prefers-reduced-motion: reduce) {
   .intro-football-flight, .intro-confetti-fall, .intro-logo-reveal, .intro-trail-draw, .intro-trail-glow { animation: none; }
-  .intro-football-flight { transform: translate3d(-50%, calc(-50% + 16svh), 0) scale(1.28); }
+  .intro-football-flight { transform: translate3d(-50%, calc(-50% + 7svh), 0) scale(1.24); }
   .intro-trail-draw { stroke-dashoffset: 0; opacity: 0.55; }
 }
 :where([class*="text-[8px]"]) { font-size: 10px; }

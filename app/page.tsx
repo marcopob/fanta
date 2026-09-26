@@ -432,14 +432,13 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
       setArrived(true)
       return
     }
-    const timer = window.setTimeout(() => setArrived(true), 2800)
+    const timer = window.setTimeout(() => setArrived(true), 3600)
     return () => window.clearTimeout(timer)
   }, [])
 
   return (
     <section aria-label="Benvenuto in Fanta Vibes" className="fixed inset-0 z-[100] isolate min-h-[100svh] overflow-hidden bg-[#0754bd] text-white">
-      <Image src="/football-pitch-background.png" alt="" fill priority sizes="100vw" className="-z-10 object-cover object-center opacity-35 mix-blend-screen" />
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_50%_42%,rgba(96,190,255,0.68)_0%,rgba(25,116,229,0.5)_36%,rgba(4,42,117,0.88)_100%)]" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_50%_40%,#2789f7_0%,#1266d3_48%,#073b9b_100%)]" />
       <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[36svh] bg-gradient-to-t from-[#031942]/60 to-transparent" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
         {Array.from({ length: 34 }, (_, index) => (
@@ -459,15 +458,15 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
       </div>
 
       <svg aria-hidden="true" viewBox="0 0 100 100" preserveAspectRatio="none" className="pointer-events-none absolute inset-0 z-0 h-full w-full overflow-visible">
-        <path d="M 21 76 C 28 47, 63 20, 66 34 C 69 47, 59 54, 50 63" fill="none" stroke="rgba(255,255,255,.75)" strokeWidth=".28" strokeLinecap="round" strokeDasharray="110" className="intro-trail-draw" />
-        <path d="M 21 76 C 28 47, 63 20, 66 34 C 69 47, 59 54, 50 63" fill="none" stroke="rgba(113,220,255,.85)" strokeWidth="1.2" strokeLinecap="round" strokeDasharray="110" className="intro-trail-glow" />
+        <path d="M 21 76 C 28 47, 63 20, 66 34 C 69 47, 59 54, 50 57" fill="none" stroke="rgba(255,255,255,.75)" strokeWidth=".28" strokeLinecap="round" strokeDasharray="110" className="intro-trail-draw" />
+        <path d="M 21 76 C 28 47, 63 20, 66 34 C 69 47, 59 54, 50 57" fill="none" stroke="rgba(113,220,255,.85)" strokeWidth="1.2" strokeLinecap="round" strokeDasharray="110" className="intro-trail-glow" />
       </svg>
 
       <div className="intro-football-flight absolute left-1/2 top-1/2 z-10 size-36 sm:size-48" aria-hidden="true">
         <Image src="/intro-football.png" alt="" fill priority sizes="(max-width: 640px) 144px, 192px" className="object-contain drop-shadow-[0_18px_24px_rgba(1,19,61,0.42)]" />
       </div>
 
-      <div className="absolute inset-x-0 top-[20%] z-20 flex justify-center px-5">
+      <div className="absolute inset-x-0 top-[6%] z-20 flex justify-center px-5">
         {arrived && (
           <div className="intro-logo-reveal flex flex-col items-center text-center">
             <h1 className="sr-only">Fanta Vibes</h1>

@@ -124,8 +124,8 @@ function canPlay(player: Player, position: Position, mode: Mode) {
 
 type FormationAdvice = { index: number; lineup: Lineup; playerValue: number; modifierBonus: number; score: number; filledSlots: number }
 
-function getModifierBonus(defenders: Player[]) {
-  if (defenders.length < 3) return 0
+function getModifierBonus(defenders: Player[], goalkeeper: Player[] = []) {
+  if (defenders.length !== 4 || goalkeeper.length !== 1) return 0
   const averageMv = defenders.reduce((total, player) => total + player.mv, 0) / defenders.length
   return averageMv >= 7 ? 3 : averageMv >= 6 ? 1 : 0
 }
@@ -156,7 +156,7 @@ function evaluateFormation(squad: Player[], formation: Formation, index: number,
   const lineup = getBestLineup(squad, formation, mode, avoidRisk, considerModifier)
   const players = Object.values(lineup).flat()
   const playerValue = players.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
-  const modifierBonus = considerModifier ? getModifierBonus(lineup.D) * (lineup.D.length ? lineup.D.reduce((total, player) => total + getAvailability(player), 0) / lineup.D.length : 0) : 0
+  const modifierBonus = considerModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((total, player) => total + getAvailability(player), 0) / 5 : 0
   const filledSlots = players.length
   return { index, lineup, playerValue, modifierBonus, score: playerValue + modifierBonus, filledSlots }
 }
@@ -445,7 +445,7 @@ export default function Home() {
   const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk, defenseModifier), [squad, currentFormation, mode, avoidRisk, defenseModifier])
   const starters = useMemo(() => Object.values(lineup).flat(), [lineup])
   const currentExpectedValue = starters.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
-  const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D) * (lineup.D.length ? lineup.D.reduce((total, player) => total + getAvailability(player), 0) / lineup.D.length : 0) : 0
+  const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((total, player) => total + getAvailability(player), 0) / 5 : 0
   const modifierGain = formationAdvice.withModifier.score - formationAdvice.withoutModifier.score
   const modifierChangesPlan = formationAdvice.withModifier.index !== formationAdvice.withoutModifier.index
   const riskPlayers = starters.filter((player) => player.titolarita < 60 || player.inj)

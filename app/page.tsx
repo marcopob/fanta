@@ -124,10 +124,16 @@ function canPlay(player: Player, position: Position, mode: Mode) {
 
 type FormationAdvice = { index: number; lineup: Lineup; playerValue: number; modifierBonus: number; score: number; filledSlots: number }
 
+function getModifierAverage(defenders: Player[], goalkeeper: Player[] = []) {
+  if (defenders.length !== 4 || goalkeeper.length !== 1) return null
+  const bestThreeDefenderRatings = defenders.map((player) => player.mv).sort((a, b) => b - a).slice(0, 3)
+  return [...bestThreeDefenderRatings, goalkeeper[0].mv].reduce((total, rating) => total + rating, 0) / 4
+}
+
 function getModifierBonus(defenders: Player[], goalkeeper: Player[] = []) {
-  if (defenders.length !== 4 || goalkeeper.length !== 1) return 0
-  const averageMv = defenders.reduce((total, player) => total + player.mv, 0) / defenders.length
-  return averageMv >= 7 ? 3 : averageMv >= 6 ? 1 : 0
+  const averageMv = getModifierAverage(defenders, goalkeeper)
+  if (averageMv === null) return 0
+  return averageMv >= 7 ? 3 : averageMv >= 6.5 ? 2 : averageMv >= 6 ? 1 : 0
 }
 
 function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidRisk: boolean, considerModifier: boolean): Lineup {
@@ -156,7 +162,7 @@ function evaluateFormation(squad: Player[], formation: Formation, index: number,
   const lineup = getBestLineup(squad, formation, mode, avoidRisk, considerModifier)
   const players = Object.values(lineup).flat()
   const playerValue = players.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
-  const modifierBonus = considerModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((total, player) => total + getAvailability(player), 0) / 5 : 0
+  const modifierBonus = considerModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((probability, player) => probability * getAvailability(player), 1) : 0
   const filledSlots = players.length
   return { index, lineup, playerValue, modifierBonus, score: playerValue + modifierBonus, filledSlots }
 }
@@ -375,7 +381,7 @@ function SettingsPanel({ mode, setMode, defenseModifier, setDefenseModifier, avo
         <div className="mb-5 flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua lega</p><h2 id="settings-title" className="mt-1 text-xl font-black">Impostazioni</h2></div><button type="button" onClick={onClose} aria-label="Chiudi impostazioni" className="rounded-xl border border-white/10 p-2 text-white/55 hover:bg-white/10"><X size={17} /></button></div>
         <div className="flex flex-col gap-3">
           <div><p className="mb-2 text-[9px] font-bold uppercase tracking-widest text-white/45">Modalità di gioco</p><div className="grid grid-cols-2 gap-2">{(["Classic", "Mantra"] as Mode[]).map((option) => <button key={option} type="button" aria-pressed={mode === option} onClick={() => setMode(option)} className={`rounded-xl border px-4 py-3 text-sm font-black transition ${mode === option ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e]" : "border-white/10 bg-white/[0.03] text-white/65 hover:text-white"}`}>{option.toUpperCase()}</button>)}</div></div>
-          <SettingSwitch label="Modificatore difesa" detail="Calcola media MV e bonus difesa" checked={defenseModifier} onChange={setDefenseModifier} />
+          <SettingSwitch label="Modificatore difesa" detail="Media migliori 3 difensori + portiere: 6–6,49 = +1; 6,5–6,99 = +2; da 7 = +3." checked={defenseModifier} onChange={setDefenseModifier} />
           <SettingSwitch label="Evita titolarità sotto 60%" detail="Usa un fallback solo se necessario" checked={avoidRisk} onChange={setAvoidRisk} />
         </div>
         <button type="button" onClick={onClose} className="mt-5 w-full rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e]">SALVA IMPOSTAZIONI</button>
@@ -445,7 +451,7 @@ export default function Home() {
   const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk, defenseModifier), [squad, currentFormation, mode, avoidRisk, defenseModifier])
   const starters = useMemo(() => Object.values(lineup).flat(), [lineup])
   const currentExpectedValue = starters.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
-  const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((total, player) => total + getAvailability(player), 0) / 5 : 0
+  const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((probability, player) => probability * getAvailability(player), 1) : 0
   const modifierGain = formationAdvice.withModifier.score - formationAdvice.withoutModifier.score
   const modifierChangesPlan = formationAdvice.withModifier.index !== formationAdvice.withoutModifier.index
   const riskPlayers = starters.filter((player) => player.titolarita < 60 || player.inj)
@@ -455,8 +461,8 @@ export default function Home() {
   const totalXa = starters.reduce((sum, player) => sum + player.xa, 0)
   const averageTitolarita = starters.length ? starters.reduce((sum, player) => sum + player.titolarita, 0) / starters.length : 0
   const defenders = lineup.D
-  const defenderAverage = defenders.length ? defenders.reduce((sum, player) => sum + player.mv, 0) / defenders.length : 0
-  const defenseBonus = getModifierBonus(defenders)
+  const defenderAverage = getModifierAverage(defenders, lineup.P) ?? 0
+  const defenseBonus = getModifierBonus(defenders, lineup.P)
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -553,7 +559,7 @@ export default function Home() {
           <fieldset className="shrink-0"><legend className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white/55">Scegli la tua lega</legend><div className="grid grid-cols-2 gap-2.5 sm:gap-3">
             {([{ name: "Classic" as Mode, icon: "⚽", roles: "Dif · C · A" }, { name: "Mantra" as Mode, icon: "🎭", roles: "Dc · Dd · E · M · C · T · W · Pc" }]).map((option) => <button key={option.name} type="button" aria-pressed={mode === option.name} onClick={() => { setMode(option.name); setFormationIndex(0) }} className={`flex min-h-[80px] flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition sm:min-h-[94px] sm:px-5 sm:py-3 ${mode === option.name ? "border-[#ffe85e] bg-[#ffe85e]/[0.12] shadow-[0_0_24px_rgba(255,232,94,0.07)]" : "border-white/10 bg-[#151732] hover:border-white/25"}`}><span className="flex w-full items-center justify-between"><span className="text-[23px] leading-none" aria-hidden="true">{option.icon}</span>{mode === option.name && <Check size={15} className="text-[#ffe85e]" />}</span><span className={`mt-1.5 text-xs font-black tracking-[0.11em] sm:text-sm ${mode === option.name ? "text-[#ffe85e]" : "text-white/85"}`}>{option.name.toUpperCase()}</span><span className="mt-0.5 text-[8px] text-white/45 sm:text-[9px]">{option.roles}</span></button>)}
           </div></fieldset>
-          <SettingSwitch label="MODIFICATORE DIFESA" detail="Valuta la linea difensiva e il bonus MV" checked={defenseModifier} onChange={setDefenseModifier} large />
+          <SettingSwitch label="MODIFICATORE DIFESA" detail="Migliori 3 difensori + portiere: 6–6,49 = +1; 6,5–6,99 = +2; da 7 = +3." checked={defenseModifier} onChange={setDefenseModifier} large />
           {scanNotice && <p role="status" className="text-center text-[10px] leading-4 text-amber-100/80">{scanNotice}</p>}
           <p className="text-center text-[8px] text-white/25">Le tue preferenze vengono salvate automaticamente su questo dispositivo.</p>
         </div>
@@ -582,7 +588,7 @@ export default function Home() {
             <span className="absolute bottom-3 right-5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">A S TRONZO · {currentFormation.name}</span>
           </section>
           <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-[#151732] p-3 sm:grid-cols-4 sm:gap-3 sm:p-4"><Metric label="xG totali" value={totalXg.toFixed(2)} accent="text-[#ffe85e]" /><Metric label="xA totali" value={totalXa.toFixed(2)} accent="text-sky-200" /><Metric label="Titol. media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" /><Metric label="Valore atteso" value={currentExpectedValue.toFixed(2)} accent="text-violet-200" /></section>
-          {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media MV difensori: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[10px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}
+          {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media 3 migliori difensori + portiere: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[10px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}
           <p className="mt-3 text-center text-[9px] text-white/35">Formazione calcolata soltanto sui {squad.length} giocatori riconosciuti nella tua rosa. Le statistiche sono illustrative.</p>
         </div>
         {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}

@@ -1,21 +1,19 @@
 "use client"
 
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent } from "react"
 import Fuse from "fuse.js"
 import {
-  Activity,
   ArrowLeft,
   ArrowRight,
   Check,
-  ChevronDown,
+  ChevronRight,
   CircleDot,
-  FileImage,
   Flame,
   LoaderCircle,
-  ScanLine,
+  LockKeyhole,
   Settings2,
-  Shield,
+  ShieldCheck,
   Sparkles,
   Target,
   TriangleAlert,
@@ -26,6 +24,7 @@ import { createWorker } from "tesseract.js"
 
 type Position = "P" | "D" | "C" | "A"
 type Mode = "Classic" | "Mantra"
+type Page = "home" | "roster" | "formation"
 type Player = {
   id: string
   name: string
@@ -44,27 +43,34 @@ type Player = {
 type Formation = { name: string; defense: number; midfield: number; attack: number }
 type Lineup = Record<Position, Player[]>
 
-const BASE_SQUAD: Player[] = [
-  { id: "svilar", name: "Svilar", team: "Roma", position: "P", mantraRoles: ["Por"], titolarita: 95, xg: 0.02, xa: 0.01, hype: 77, mv: 6.35, inj: false, reason: "Tra i pali è una scelta affidabile: buon volume di parate e possibilità di voto solido anche senza clean sheet.", opponent: "avversario demo" },
-  { id: "meret", name: "Meret", team: "Napoli", position: "P", mantraRoles: ["Por"], titolarita: 91, xg: 0.01, xa: 0.01, hype: 68, mv: 6.18, inj: false, reason: "Portiere da modificatore con una base voto interessante. Il suo profilo premia la continuità.", opponent: "avversario demo" },
-  { id: "mancini", name: "Mancini", team: "Roma", position: "D", mantraRoles: ["Dc"], titolarita: 91, xg: 0.11, xa: 0.04, hype: 69, mv: 6.22, inj: false, reason: "Pericoloso sui piazzati e presente in area. Buon mix di minutaggio e possibilità di bonus aereo.", opponent: "avversario demo" },
-  { id: "bastoni", name: "Bastoni", team: "Inter", position: "D", mantraRoles: ["Dc", "Ds"], titolarita: 92, xg: 0.09, xa: 0.12, hype: 79, mv: 6.42, inj: false, reason: "Qualità in impostazione e inserimenti: può portare un assist oltre a un voto da modificatore.", opponent: "avversario demo" },
-  { id: "dilorenzo", name: "Di Lorenzo", team: "Napoli", position: "D", mantraRoles: ["Dd", "E"], titolarita: 88, xg: 0.08, xa: 0.14, hype: 75, mv: 6.30, inj: false, reason: "Spinge con continuità e accompagna spesso l'azione. Profilo interessante per gli assist.", opponent: "avversario demo" },
-  { id: "cambiaso", name: "Cambiaso", team: "Juventus", position: "D", mantraRoles: ["Dd", "Ds", "E"], titolarita: 83, xg: 0.07, xa: 0.15, hype: 76, mv: 6.28, inj: false, reason: "La duttilità e la partecipazione alla manovra gli danno più strade per portare bonus.", opponent: "avversario demo" },
-  { id: "dimarco", name: "Dimarco", team: "Inter", position: "D", mantraRoles: ["Ds", "E"], titolarita: 89, xg: 0.15, xa: 0.29, hype: 90, mv: 6.55, inj: false, reason: "Cross, piazzati e conclusioni: tra i difensori è uno dei profili con più upside offensivo.", opponent: "avversario demo" },
-  { id: "bremer", name: "Bremer", team: "Juventus", position: "D", mantraRoles: ["Dc"], titolarita: 76, xg: 0.12, xa: 0.02, hype: 70, mv: 6.20, inj: true, reason: "Quando disponibile garantisce fisicità e pericolosità sui calci piazzati. Controlla la condizione prima della consegna.", opponent: "avversario demo" },
-  { id: "zappacosta", name: "Zappacosta", team: "Atalanta", position: "D", mantraRoles: ["E", "Dd"], titolarita: 72, xg: 0.12, xa: 0.23, hype: 75, mv: 6.26, inj: false, reason: "Quinto di spinta con occasioni per arrivare al cross e al tiro. Upside offensivo sopra la media.", opponent: "avversario demo" },
-  { id: "calhanoglu", name: "Calhanoglu", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 93, xg: 0.19, xa: 0.28, hype: 87, mv: 6.58, inj: false, reason: "Rigori e piazzati alzano il potenziale bonus. È uno dei centrocampisti più completi della rosa.", opponent: "avversario demo" },
-  { id: "barella", name: "Barella", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 91, xg: 0.16, xa: 0.20, hype: 84, mv: 6.48, inj: false, reason: "Volume di gioco e inserimenti continui. Una scelta da buon voto con chance di bonus.", opponent: "avversario demo" },
-  { id: "pellegrini", name: "Pellegrini", team: "Roma", position: "C", mantraRoles: ["C", "T"], titolarita: 78, xg: 0.22, xa: 0.24, hype: 81, mv: 6.43, inj: false, reason: "Gioca vicino alla porta e cerca l'ultimo passaggio. Buon equilibrio tra gol e assist.", opponent: "avversario demo" },
-  { id: "bernabe", name: "Bernabè", team: "Parma", position: "C", mantraRoles: ["C", "T"], titolarita: 86, xg: 0.15, xa: 0.27, hype: 73, mv: 6.32, inj: false, reason: "Creatività e passaggi chiave: può essere decisivo anche in una partita combattuta.", opponent: "avversario demo" },
-  { id: "dacuhna", name: "Da Cunha", team: "Como", position: "C", mantraRoles: ["M", "C"], titolarita: 69, xg: 0.10, xa: 0.19, hype: 65, mv: 6.18, inj: false, reason: "Centrocampista dinamico da buon voto, con inserimenti e assist possibili.", opponent: "avversario demo" },
-  { id: "zaccagni", name: "Zaccagni", team: "Lazio", position: "C", mantraRoles: ["W", "A"], titolarita: 84, xg: 0.30, xa: 0.22, hype: 83, mv: 6.41, inj: false, reason: "Esterno offensivo che attacca l'area e crea superiorità. Tra le scelte con più potenziale bonus.", opponent: "avversario demo" },
-  { id: "orsolini", name: "Orsolini", team: "Bologna", position: "A", mantraRoles: ["W", "A"], titolarita: 89, xg: 0.41, xa: 0.23, hype: 89, mv: 6.53, inj: false, reason: "Conclusioni e responsabilità sui piazzati lo rendono uno dei profili offensivi più appetibili.", opponent: "avversario demo" },
-  { id: "soule", name: "Soulé", team: "Roma", position: "A", mantraRoles: ["W", "A"], titolarita: 85, xg: 0.37, xa: 0.30, hype: 88, mv: 6.50, inj: false, reason: "Coinvolto nelle occasioni e nell'ultimo passaggio. Dribbling e tiri lo rendono una prima scelta.", opponent: "avversario demo" },
-  { id: "castro", name: "Castro S.", team: "Bologna", position: "A", mantraRoles: ["Pc"], titolarita: 87, xg: 0.43, xa: 0.18, hype: 86, mv: 6.47, inj: false, reason: "Centravanti con volume di tiro e presenza in area: stima xG tra le più alte della rosa.", opponent: "avversario demo" },
-  { id: "diao", name: "Diao", team: "Como", position: "A", mantraRoles: ["A", "W"], titolarita: 58, xg: 0.32, xa: 0.19, hype: 78, mv: 6.25, inj: false, reason: "Attacca la profondità e crea superiorità nell'uno contro uno. Rischio titolarità elevato in questo esempio.", opponent: "avversario demo" },
-  { id: "lautaro", name: "Lautaro", team: "Inter", position: "A", mantraRoles: ["Pc"], titolarita: 94, xg: 0.56, xa: 0.14, hype: 96, mv: 6.71, inj: false, reason: "Finalizzatore centrale con grande volume di occasioni. Il suo profilo alza il potenziale offensivo.", opponent: "avversario demo" },
+const STORAGE_KEY = "fanta-vibes-v4"
+
+const PLAYER_DB: Player[] = [
+  { id: "svilar", name: "Svilar", team: "Roma", position: "P", mantraRoles: ["Por"], titolarita: 95, xg: 0.02, xa: 0.01, hype: 77, mv: 6.45, inj: false, reason: "Riferimento affidabile tra i pali, con buone possibilità di voto e interventi decisivi.", opponent: "Torino" },
+  { id: "sommer", name: "Sommer", team: "Inter", position: "P", mantraRoles: ["Por"], titolarita: 94, xg: 0.01, xa: 0.01, hype: 74, mv: 6.52, inj: false, reason: "Difesa solida alle spalle e ottima continuità di rendimento.", opponent: "Lazio" },
+  { id: "maignan", name: "Maignan", team: "Milan", position: "P", mantraRoles: ["Por"], titolarita: 91, xg: 0.01, xa: 0.02, hype: 82, mv: 6.48, inj: false, reason: "Il suo potenziale tra i pali rende interessante anche una partita equilibrata.", opponent: "Bologna" },
+  { id: "mancini", name: "Mancini", team: "Roma", position: "D", mantraRoles: ["Dc"], titolarita: 91, xg: 0.11, xa: 0.04, hype: 70, mv: 6.35, inj: false, reason: "Pericoloso sui piazzati, con una buona base voto e minutaggio costante.", opponent: "Torino" },
+  { id: "bastoni", name: "Bastoni", team: "Inter", position: "D", mantraRoles: ["Dc", "Ds"], titolarita: 93, xg: 0.09, xa: 0.14, hype: 81, mv: 6.58, inj: false, reason: "La qualità in impostazione crea occasioni da assist oltre a una media voto solida.", opponent: "Lazio" },
+  { id: "dilorenzo", name: "Di Lorenzo", team: "Napoli", position: "D", mantraRoles: ["Dd", "E"], titolarita: 90, xg: 0.08, xa: 0.17, hype: 78, mv: 6.47, inj: false, reason: "Spinge con continuità e accompagna spesso l'azione offensiva.", opponent: "Udinese" },
+  { id: "cambiaso", name: "Cambiaso", team: "Juventus", position: "D", mantraRoles: ["Dd", "Ds", "E"], titolarita: 84, xg: 0.07, xa: 0.19, hype: 76, mv: 6.38, inj: false, reason: "La duttilità e la partecipazione alla manovra aumentano le occasioni da bonus.", opponent: "Genoa" },
+  { id: "dimarco", name: "Dimarco", team: "Inter", position: "D", mantraRoles: ["Ds", "E"], titolarita: 90, xg: 0.16, xa: 0.31, hype: 92, mv: 6.75, inj: false, reason: "Cross, piazzati e conclusioni: profilo difensivo con upside offensivo notevole.", opponent: "Lazio" },
+  { id: "zappacosta", name: "Zappacosta", team: "Atalanta", position: "D", mantraRoles: ["E", "Dd"], titolarita: 74, xg: 0.13, xa: 0.23, hype: 75, mv: 6.32, inj: false, reason: "Quinto di spinta che può arrivare al cross e alla conclusione.", opponent: "Fiorentina" },
+  { id: "scalvini", name: "Scalvini", team: "Atalanta", position: "D", mantraRoles: ["Dc"], titolarita: 68, xg: 0.08, xa: 0.03, hype: 64, mv: 6.20, inj: true, reason: "Buon potenziale sui piazzati, ma la condizione fisica richiede attenzione.", opponent: "Fiorentina" },
+  { id: "buongiorno", name: "Buongiorno", team: "Napoli", position: "D", mantraRoles: ["Dc"], titolarita: 85, xg: 0.09, xa: 0.02, hype: 72, mv: 6.39, inj: false, reason: "Difensore centrale regolare, con presenza in area sulle palle inattive.", opponent: "Udinese" },
+  { id: "calhanoglu", name: "Calhanoglu", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 93, xg: 0.22, xa: 0.30, hype: 89, mv: 6.71, inj: false, reason: "Rigori e calci piazzati aggiungono un alto potenziale di bonus.", opponent: "Lazio" },
+  { id: "barella", name: "Barella", team: "Inter", position: "C", mantraRoles: ["M", "C"], titolarita: 92, xg: 0.17, xa: 0.23, hype: 84, mv: 6.57, inj: false, reason: "Volume di gioco e inserimenti continui: affidabile per voto e bonus.", opponent: "Lazio" },
+  { id: "pellegrini", name: "Pellegrini", team: "Roma", position: "C", mantraRoles: ["C", "T"], titolarita: 79, xg: 0.24, xa: 0.27, hype: 82, mv: 6.52, inj: false, reason: "Gioca vicino alla porta e cerca spesso l'ultimo passaggio.", opponent: "Torino" },
+  { id: "bernabe", name: "Bernabè", team: "Parma", position: "C", mantraRoles: ["C", "T"], titolarita: 86, xg: 0.16, xa: 0.29, hype: 74, mv: 6.39, inj: false, reason: "Creatività e passaggi chiave possono fare la differenza anche in una gara chiusa.", opponent: "Como" },
+  { id: "dacuhna", name: "Da Cunha", team: "Como", position: "C", mantraRoles: ["M", "C"], titolarita: 69, xg: 0.11, xa: 0.20, hype: 66, mv: 6.24, inj: false, reason: "Centrocampista dinamico, con inserimenti e assist possibili.", opponent: "Parma" },
+  { id: "pulisic", name: "Pulisic", team: "Milan", position: "C", mantraRoles: ["W", "T"], titolarita: 89, xg: 0.39, xa: 0.27, hype: 91, mv: 6.73, inj: false, reason: "Si inserisce con frequenza e partecipa alla maggior parte delle azioni pericolose.", opponent: "Bologna" },
+  { id: "zaccagni", name: "Zaccagni", team: "Lazio", position: "C", mantraRoles: ["W", "A"], titolarita: 83, xg: 0.31, xa: 0.24, hype: 85, mv: 6.54, inj: false, reason: "Esterno offensivo che attacca l'area e crea superiorità nell'uno contro uno.", opponent: "Inter" },
+  { id: "orsolini", name: "Orsolini", team: "Bologna", position: "A", mantraRoles: ["W", "A"], titolarita: 90, xg: 0.43, xa: 0.25, hype: 91, mv: 6.70, inj: false, reason: "Conclusioni e responsabilità sui piazzati lo rendono una scelta ad alto potenziale.", opponent: "Milan" },
+  { id: "soule", name: "Soulé", team: "Roma", position: "A", mantraRoles: ["W", "A"], titolarita: 85, xg: 0.39, xa: 0.32, hype: 89, mv: 6.61, inj: false, reason: "Coinvolto nelle occasioni e nell'ultimo passaggio, con un buon volume di tiri.", opponent: "Torino" },
+  { id: "castro", name: "Castro S.", team: "Bologna", position: "A", mantraRoles: ["Pc"], titolarita: 87, xg: 0.46, xa: 0.19, hype: 88, mv: 6.59, inj: false, reason: "Centravanti con volume di tiro e presenza costante in area.", opponent: "Milan" },
+  { id: "diao", name: "Diao", team: "Como", position: "A", mantraRoles: ["A", "W"], titolarita: 58, xg: 0.34, xa: 0.20, hype: 79, mv: 6.34, inj: false, reason: "Attacca la profondità e crea superiorità, ma la titolarità è da verificare.", opponent: "Parma" },
+  { id: "lautaro", name: "Lautaro", team: "Inter", position: "A", mantraRoles: ["Pc"], titolarita: 94, xg: 0.59, xa: 0.17, hype: 97, mv: 6.91, inj: false, reason: "Finalizzatore con alto volume di occasioni e rigorista della squadra.", opponent: "Lazio" },
+  { id: "lookman", name: "Lookman", team: "Atalanta", position: "A", mantraRoles: ["A", "Pc"], titolarita: 88, xg: 0.48, xa: 0.27, hype: 94, mv: 6.82, inj: false, reason: "Strappi e conclusioni lo rendono una delle principali fonti di bonus.", opponent: "Fiorentina" },
+  { id: "retegui", name: "Retegui", team: "Atalanta", position: "A", mantraRoles: ["Pc"], titolarita: 82, xg: 0.51, xa: 0.13, hype: 88, mv: 6.69, inj: false, reason: "Attaccante d'area con buone occasioni da gol e presenza sui cross.", opponent: "Fiorentina" },
 ]
 
 const CLASSIC_FORMATIONS: Formation[] = [
@@ -83,12 +89,12 @@ const MANTRA_FORMATIONS: Formation[] = [
   { name: "4-2-3-1", defense: 4, midfield: 5, attack: 1 },
   { name: "4-4-2", defense: 4, midfield: 4, attack: 2 },
 ]
-const POSITION_NAMES: Record<Position, string> = { P: "Portiere", D: "Difesa", C: "Centrocampo", A: "Attacco" }
+const POSITION_NAMES: Record<Position, string> = { P: "Portieri", D: "Difensori", C: "Centrocampisti", A: "Attaccanti" }
 const POSITION_COLORS: Record<Position, string> = {
-  P: "border-sky-400/30 bg-sky-400/10 text-sky-200",
-  D: "border-emerald-400/30 bg-emerald-400/10 text-emerald-200",
-  C: "border-amber-300/30 bg-amber-300/10 text-amber-100",
-  A: "border-orange-400/30 bg-orange-400/10 text-orange-200",
+  P: "border-sky-300/30 bg-sky-300/10 text-sky-100",
+  D: "border-emerald-300/30 bg-emerald-300/10 text-emerald-100",
+  C: "border-amber-200/30 bg-amber-200/10 text-amber-100",
+  A: "border-orange-300/30 bg-orange-300/10 text-orange-100",
 }
 
 function normalizeName(value: string) {
@@ -109,15 +115,14 @@ function canPlay(player: Player, position: Position, mode: Mode) {
 }
 
 function selectPlayers(pool: Player[], position: Position, count: number, mode: Mode, avoidRisk: boolean, excluded: Set<string>) {
-  if (count <= 0) return []
   const candidates = pool.filter((player) => !excluded.has(player.id) && canPlay(player, position, mode)).sort((a, b) => getScore(b) - getScore(a))
-  const safe = avoidRisk ? candidates.filter((player) => player.titolarita >= 60) : candidates
-  const picked = safe.slice(0, count)
-  if (picked.length < count) {
-    const pickedIds = new Set(picked.map((player) => player.id))
-    picked.push(...candidates.filter((player) => !pickedIds.has(player.id)).slice(0, count - picked.length))
+  const safePlayers = avoidRisk ? candidates.filter((player) => player.titolarita >= 60) : candidates
+  const selected = safePlayers.slice(0, count)
+  if (selected.length < count) {
+    const selectedIds = new Set(selected.map((player) => player.id))
+    selected.push(...candidates.filter((player) => !selectedIds.has(player.id)).slice(0, count - selected.length))
   }
-  return picked
+  return selected
 }
 
 function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidRisk: boolean): Lineup {
@@ -131,55 +136,56 @@ function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidR
   return lineup
 }
 
-function matchRosterFromOcr(text: string) {
-  const matcher = new Fuse(BASE_SQUAD, { keys: ["name"], includeScore: true, threshold: 0.48, ignoreLocation: true, minMatchCharLength: 3 })
-  const matched = new Set<string>()
+function matchRosterFromOcr(text: string): Player[] {
+  const matcher = new Fuse(PLAYER_DB, { keys: ["name"], includeScore: true, threshold: 0.42, ignoreLocation: true, minMatchCharLength: 3 })
+  const matchedIds = new Set<string>()
   const lines = text.split(/[\n\r|]+/).map((line) => line.replace(/\d+[.,]?\d*/g, " ").replace(/[^\p{L}\s.'-]/gu, " ").trim()).filter(Boolean)
-  const skip = /^(rosa|titolari|panchina|formazione|giocatori|giocatore|portieri|portiere|difensori|centrocampisti|attaccanti|rendimento|quotazione|fantacalcio|punteggio|totale|voti|lega|mercato|svincolati|infortunati)$/i
+  const headings = /^(rosa|titolari|panchina|formazione|giocatori|giocatore|portieri|portiere|difensori|centrocampisti|attaccanti|rendimento|quotazione|fantacalcio|punteggio|totale|voti|lega|mercato|svincolati|infortunati)$/i
   for (const line of lines) {
-    if (line.length < 3 || skip.test(line)) continue
+    if (line.length < 3 || headings.test(line)) continue
     const words = line.split(/\s+/).filter((word) => word.length > 1)
-    const candidates = new Set([line, ...words])
+    const candidates = new Set<string>([line, ...words])
     for (let size = 2; size <= Math.min(4, words.length); size += 1) {
       for (let start = 0; start <= words.length - size; start += 1) candidates.add(words.slice(start, start + size).join(" "))
     }
     for (const candidate of candidates) {
-      const result = matcher.search(candidate)[0]
-      if (result && (result.score ?? 1) < 0.4) matched.add(result.item.id)
+      const match = matcher.search(candidate)[0]
+      if (match && (match.score ?? 1) <= 0.42) matchedIds.add(match.item.id)
     }
   }
-  return BASE_SQUAD.filter((player) => matched.has(player.id))
+  return PLAYER_DB.filter((player) => matchedIds.has(player.id))
 }
 
 function getTitolaritaStyle(value: number) {
-  if (value >= 80) return "border-emerald-300/30 bg-emerald-400/20 text-emerald-100"
-  if (value >= 60) return "border-amber-300/30 bg-amber-300/20 text-amber-100"
-  return "border-rose-300/30 bg-rose-400/20 text-rose-100"
+  if (value >= 80) return "border-emerald-300/30 bg-emerald-300/15 text-emerald-100"
+  if (value >= 60) return "border-amber-200/30 bg-amber-200/15 text-amber-100"
+  return "border-rose-300/30 bg-rose-300/15 text-rose-100"
 }
 
 function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
+  const isRisk = player.titolarita < 60 || player.inj
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
-      <section role="dialog" aria-modal="true" aria-labelledby="player-modal-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-t-[28px] border border-white/10 bg-[#131713] shadow-2xl sm:rounded-[28px]">
-        <div className="h-1 bg-gradient-to-r from-lime-300 via-yellow-300 to-orange-400" />
-        <div className="p-6 sm:p-8">
+      <section role="dialog" aria-modal="true" aria-labelledby="player-modal-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-lg overflow-hidden rounded-t-[28px] border border-white/10 bg-[#151732] shadow-2xl sm:rounded-[28px]">
+        <div className="h-1 bg-gradient-to-r from-[#ffe85e] via-orange-300 to-rose-400" />
+        <div className="p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className={`mb-3 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.16em] ${POSITION_COLORS[player.position]}`}>{player.position} · {player.team}</div>
-              <h2 id="player-modal-title" className="text-3xl font-black tracking-tight text-white">{player.name}</h2>
-              <p className="mt-1 text-sm text-white/50">Prossima partita: {player.opponent}</p>
+              <div className={`mb-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${POSITION_COLORS[player.position]}`}>{player.position} · {player.team} · {player.mantraRoles.join(" / ")}</div>
+              <h2 id="player-modal-title" className="text-3xl font-black tracking-tight">{player.name}</h2>
+              <p className="mt-1 text-sm text-white/50">Avversario: {player.opponent}</p>
             </div>
-            <button type="button" onClick={onClose} aria-label="Chiudi dettagli giocatore" className="rounded-full border border-white/10 p-2 text-white/60 transition hover:bg-white/10 hover:text-white"><X size={18} /></button>
+            <button type="button" onClick={onClose} aria-label="Chiudi dettagli" className="rounded-full border border-white/10 p-2 text-white/60 hover:bg-white/10"><X size={18} /></button>
           </div>
-          <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-3">
-            {[ ["xG", player.xg.toFixed(2), "text-lime-300"], ["xA", player.xa.toFixed(2), "text-sky-300"], ["Hype", `${player.hype}%`, "text-orange-300"], ["Titolare", `${player.titolarita}%`, "text-emerald-200"], ["Media voto", player.mv.toFixed(2), "text-violet-200"], ["Disponibilità", player.inj ? "Da verificare" : "Disponibile", player.inj ? "text-rose-200" : "text-emerald-200"] ].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-4"><div className={`mb-3 text-[10px] font-bold uppercase tracking-widest ${color}`}>{label}</div><div className="text-xl font-black text-white">{value}</div></div>)}
+          <div className="mt-6 grid grid-cols-3 gap-2">
+            {[["xG", player.xg.toFixed(2), "text-[#ffe85e]"], ["xA", player.xa.toFixed(2), "text-sky-200"], ["Hype", `${player.hype}%`, "text-orange-200"], ["MV", player.mv.toFixed(2), "text-violet-200"], ["Titolare", `${player.titolarita}%`, "text-emerald-200"], ["Rischio", isRisk ? "ALTO" : "BASSO", isRisk ? "text-rose-200" : "text-emerald-200"]].map(([label, value, color]) => <div key={label} className="rounded-2xl border border-white/[0.07] bg-white/[0.035] p-3"><div className={`mb-2 text-[9px] font-bold uppercase tracking-widest ${color}`}>{label}</div><div className="text-lg font-black">{value}</div></div>)}
           </div>
-          <div className="mt-5 rounded-2xl border border-lime-300/10 bg-lime-300/[0.045] p-4">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.17em] text-lime-200"><Sparkles size={14} /> Perché schierarlo</div>
+          <div className="mt-4 rounded-2xl border border-[#ffe85e]/10 bg-[#ffe85e]/[0.045] p-4">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[#ffe85e]"><Sparkles size={14} />Perché schierarlo</div>
             <p className="mt-2 text-sm leading-6 text-white/75">{player.reason}</p>
           </div>
-          <p className="mt-4 text-[10px] leading-5 text-white/40">Statistiche, titolarità e avversario sono valori dimostrativi, non aggiornamenti live.</p>
-          <button type="button" onClick={onClose} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-lime-300 px-4 py-3.5 text-sm font-black text-[#14180e] transition hover:bg-lime-200">FATTO <Check size={16} /></button>
+          <p className="mt-3 text-[10px] leading-5 text-white/35">xG, xA, hype, media voto, titolarità e avversario sono stime illustrative.</p>
+          <button type="button" onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e] hover:bg-yellow-200">CHIUDI <Check size={16} /></button>
         </div>
       </section>
     </div>
@@ -187,63 +193,115 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
 }
 
 function PitchPlayer({ player, onSelect }: { player: Player; onSelect: (player: Player) => void }) {
-  const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2)
+  const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
   return (
-    <button type="button" onClick={() => onSelect(player)} aria-label={`Apri dettagli ${player.name}, ${player.titolarita}% titolarità`} className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1 py-1 text-center transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-lime-300 ${player.inj ? "opacity-30 grayscale" : ""}`}>
-      <span className={`relative flex size-9 items-center justify-center rounded-full border-2 bg-[#172819] text-[10px] font-black text-white shadow-[0_4px_18px_rgba(0,0,0,0.3)] transition group-hover:scale-110 sm:size-11 sm:text-xs ${player.titolarita < 60 ? "border-dashed border-rose-300" : "border-white/65 group-hover:border-lime-200"}`}>
+    <button type="button" onClick={() => onSelect(player)} aria-label={`Apri dettagli ${player.name}, ${player.titolarita}% titolarità`} className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-1.5 text-center transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffe85e] ${player.inj ? "opacity-30 grayscale" : ""}`}>
+      <span className={`relative flex size-10 items-center justify-center rounded-full border-2 bg-[#122b20] text-[11px] font-black shadow-lg sm:size-12 sm:text-xs ${player.titolarita < 60 ? "border-dashed border-rose-300" : "border-white/65 group-hover:border-[#ffe85e]"}`}>
         {initials}
-        <span className={`absolute -right-3 -top-2 rounded-full border px-1 py-0.5 text-[7px] font-black leading-none sm:text-[8px] ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}%</span>
+        <span className={`absolute -right-3 -top-2 rounded-full border px-1.5 py-0.5 text-[8px] font-black leading-none ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}%</span>
       </span>
-      <span className="max-w-[68px] truncate text-[9px] font-bold text-white sm:max-w-[96px] sm:text-[11px]">{player.name}</span>
-      <span className="text-[9px] font-semibold text-lime-100/70">xG {player.xg.toFixed(2)}</span>
+      <span className="max-w-[80px] truncate text-[10px] font-bold sm:max-w-28 sm:text-[11px]">{player.name}</span>
+      <span className="text-[9px] font-semibold text-[#ffe85e]/80">xG {player.xg.toFixed(2)}</span>
     </button>
   )
 }
 
+function SettingSwitch({ label, detail, checked, onChange, large = false }: { label: string; detail?: string; checked: boolean; onChange: (value: boolean) => void; large?: boolean }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`flex w-full items-center justify-between gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.025] text-left transition hover:border-white/15 ${large ? "px-4 py-3.5 sm:px-5 sm:py-4" : "px-3 py-3"}`}>
+      <span><span className={`block font-bold ${large ? "text-sm sm:text-base" : "text-xs"}`}>{label}</span>{detail && <span className="mt-1 block text-[10px] text-white/40">{detail}</span>}</span>
+      <span className={`relative flex h-7 w-12 shrink-0 items-center rounded-full transition ${checked ? "bg-[#ffe85e]" : "bg-white/15"}`}><span className={`size-5 rounded-full bg-[#0a0c1e] shadow transition-transform ${checked ? "translate-x-6" : "translate-x-1"}`} /></span>
+    </button>
+  )
+}
+
+function SettingsPanel({ mode, setMode, defenseModifier, setDefenseModifier, avoidRisk, setAvoidRisk, onClose }: { mode: Mode; setMode: (value: Mode) => void; defenseModifier: boolean; setDefenseModifier: (value: boolean) => void; avoidRisk: boolean; setAvoidRisk: (value: boolean) => void; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/70 p-4 pt-16 backdrop-blur-sm sm:items-center sm:pt-4" onClick={onClose}>
+      <section role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#151732] p-5 shadow-2xl sm:p-6">
+        <div className="mb-5 flex items-center justify-between"><div><p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua lega</p><h2 id="settings-title" className="mt-1 text-xl font-black">Impostazioni</h2></div><button type="button" onClick={onClose} aria-label="Chiudi impostazioni" className="rounded-xl border border-white/10 p-2 text-white/55 hover:bg-white/10"><X size={17} /></button></div>
+        <div className="flex flex-col gap-3">
+          <div><p className="mb-2 text-[9px] font-bold uppercase tracking-widest text-white/45">Modalità di gioco</p><div className="grid grid-cols-2 gap-2">{(["Classic", "Mantra"] as Mode[]).map((option) => <button key={option} type="button" aria-pressed={mode === option} onClick={() => setMode(option)} className={`rounded-xl border px-4 py-3 text-sm font-black transition ${mode === option ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e]" : "border-white/10 bg-white/[0.03] text-white/65 hover:text-white"}`}>{option.toUpperCase()}</button>)}</div></div>
+          <SettingSwitch label="Modificatore difesa" detail="Calcola media MV e bonus difesa" checked={defenseModifier} onChange={setDefenseModifier} />
+          <SettingSwitch label="Evita titolarità sotto 60%" detail="Usa un fallback solo se necessario" checked={avoidRisk} onChange={setAvoidRisk} />
+        </div>
+        <button type="button" onClick={onClose} className="mt-5 w-full rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e]">SALVA IMPOSTAZIONI</button>
+      </section>
+    </div>
+  )
+}
+
 export default function Home() {
-  const [screen, setScreen] = useState<"home" | "tips">("home")
-  const [squad, setSquad] = useState<Player[]>(BASE_SQUAD)
-  const [hasUploaded, setHasUploaded] = useState(false)
-  const [screenshotUrl, setScreenshotUrl] = useState<string | null>(null)
-  const [fileName, setFileName] = useState("")
-  const [scanning, setScanning] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [notice, setNotice] = useState("")
+  const [page, setPage] = useState<Page>("home")
+  const [squad, setSquad] = useState<Player[]>([])
   const [mode, setMode] = useState<Mode>("Classic")
   const [defenseModifier, setDefenseModifier] = useState(true)
   const [avoidRisk, setAvoidRisk] = useState(true)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [teamName, setTeamName] = useState("")
   const [formationIndex, setFormationIndex] = useState(0)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [scanNotice, setScanNotice] = useState("")
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
-  const [liveTeams, setLiveTeams] = useState<Record<string, string>>({})
-  const [loadingTips, setLoadingTips] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const value = JSON.parse(saved) as { mode?: Mode; defenseModifier?: boolean; avoidRisk?: boolean; teamName?: string; playerIds?: string[]; page?: Page }
+        if (value.mode === "Classic" || value.mode === "Mantra") setMode(value.mode)
+        if (typeof value.defenseModifier === "boolean") setDefenseModifier(value.defenseModifier)
+        if (typeof value.avoidRisk === "boolean") setAvoidRisk(value.avoidRisk)
+        if (typeof value.teamName === "string") setTeamName(value.teamName)
+        if (Array.isArray(value.playerIds)) {
+          const ids = new Set(value.playerIds.filter((id): id is string => typeof id === "string"))
+          setSquad(PLAYER_DB.filter((player) => ids.has(player.id)))
+          if (value.page === "roster" || value.page === "formation") setPage("roster")
+        }
+      }
+    } catch {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+    setHydrated(true)
+  }, [])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, defenseModifier, avoidRisk, teamName, playerIds: squad.map((player) => player.id), page }))
+    } catch {
+      // Storage can be unavailable in private browsing; the current session remains usable.
+    }
+  }, [hydrated, mode, defenseModifier, avoidRisk, teamName, squad, page])
+
   const formations = mode === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS
   const currentFormation = formations[formationIndex] ?? formations[0]
   const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk), [squad, currentFormation, mode, avoidRisk])
   const starters = useMemo(() => Object.values(lineup).flat(), [lineup])
-  const lineupXgXa = starters.reduce((sum, player) => sum + player.xg + player.xa, 0)
-  const averageTitolarita = starters.length ? starters.reduce((sum, player) => sum + player.titolarita, 0) / starters.length : 0
-  const lowRiskFallbacks = starters.filter((player) => avoidRisk && player.titolarita < 60)
-  const injuredStarters = starters.filter((player) => player.inj)
+  const riskPlayers = starters.filter((player) => player.titolarita < 60 || player.inj)
+  const fallbackPlayers = starters.filter((player) => avoidRisk && player.titolarita < 60)
   const missingStarters = Math.max(0, 11 - starters.length)
-  const previewPlayers = squad.slice(0, 8)
+  const totalXg = starters.reduce((sum, player) => sum + player.xg, 0)
+  const totalXa = starters.reduce((sum, player) => sum + player.xa, 0)
+  const averageTitolarita = starters.length ? starters.reduce((sum, player) => sum + player.titolarita, 0) / starters.length : 0
+  const defenders = lineup.D
+  const defenderAverage = defenders.length ? defenders.reduce((sum, player) => sum + player.mv, 0) / defenders.length : 0
+  const defenseBonus = defenderAverage >= 7 ? 3 : defenderAverage >= 6 ? 1 : 0
 
   async function handleUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith("image/")) {
-      setNotice("Scegli un'immagine PNG, JPG o WEBP.")
+      setScanNotice("Scegli un'immagine PNG, JPG o WEBP.")
+      event.target.value = ""
       return
     }
-    setScreenshotUrl((previous) => {
-      if (previous) URL.revokeObjectURL(previous)
-      return URL.createObjectURL(file)
-    })
-    setFileName(file.name)
     setScanning(true)
     setProgress(0)
-    setNotice("")
+    setScanNotice("")
     try {
       const worker = await createWorker("ita", 1, {
         logger: (message) => {
@@ -253,185 +311,84 @@ export default function Home() {
       try {
         const { data } = await worker.recognize(file)
         const found = matchRosterFromOcr(data.text)
-        if (found.length > 0) {
-          setSquad(found)
-          setNotice(`${found.length} giocator${found.length === 1 ? "e riconosciuto" : "i riconosciuti"} con OCR.`)
-        } else {
-          setNotice("Non ho trovato nomi del database demo nello screenshot. Puoi usare comunque la rosa demo.")
-        }
+        setSquad(found)
+        setPage("roster")
+        setScanNotice(found.length
+          ? `${found.length} ${found.length === 1 ? "giocatore riconosciuto" : "giocatori riconosciuti"}. Mostriamo solo i nomi trovati nella tua rosa.`
+          : "Nessun giocatore riconosciuto. La rosa resta vuota: prova con uno screenshot più nitido.")
       } finally {
         await worker.terminate()
       }
     } catch {
-      setNotice("Scansione non riuscita: controlla la connessione e riprova. Puoi usare la rosa demo.")
+      setSquad([])
+      setPage("roster")
+      setScanNotice("Scansione non riuscita. La rosa resta vuota: controlla la connessione e riprova.")
     } finally {
       setScanning(false)
-      setHasUploaded(true)
       if (uploadRef.current) uploadRef.current.value = ""
     }
   }
 
-  async function fetchTeamInfo(players: Player[]) {
-    const results = await Promise.allSettled(players.map(async (player) => {
-      const response = await fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(player.name)}`, { signal: AbortSignal.timeout(5000) })
-      if (!response.ok) throw new Error("Ricerca giocatore non disponibile")
-      const data = await response.json() as { player?: Array<{ strTeam?: string | null; strPlayer?: string | null }> | null }
-      const target = normalizeName(player.name.replace(/\s+S\.?$/i, ""))
-      const match = data.player?.find((result) => result.strPlayer && (normalizeName(result.strPlayer) === target || (target.length >= 7 && normalizeName(result.strPlayer).includes(target))))
-      return match?.strTeam ? [player.id, match.strTeam] as const : null
-    }))
-    setLiveTeams((previous) => {
-      const next = { ...previous }
-      for (const result of results) if (result.status === "fulfilled" && result.value) next[result.value[0]] = result.value[1]
-      return next
-    })
-  }
-
-  async function openTips() {
-    setSettingsOpen(false)
-    setFormationIndex(0)
-    setScreen("tips")
-    setLoadingTips(true)
-    await fetchTeamInfo(squad)
-    setLoadingTips(false)
-  }
-
-  function returnHome() {
+  function goHome() {
     setSelectedPlayer(null)
-    setScreen("home")
+    setPage("home")
   }
 
   return (
-    <main className="min-h-[100svh] bg-[#0b0d0b] font-sans text-white selection:bg-lime-300 selection:text-black">
-      {screen === "home" ? (
-        <div className="relative flex h-[100svh] flex-col overflow-hidden px-4 pb-3 sm:px-8 sm:pb-4">
-          <header className="mx-auto flex w-full max-w-6xl shrink-0 items-center justify-between border-b border-white/[0.07] py-3 sm:py-4">
-            <div className="flex items-center gap-2.5"><span className="flex size-8 items-center justify-center rounded-xl bg-lime-300 text-[#10140b]"><CircleDot size={18} strokeWidth={2.6} /></span><h1 className="text-sm font-black tracking-[0.1em] sm:text-base">A S <span className="text-lime-300">TRONZO</span></h1></div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full border border-orange-300/20 bg-orange-300/[0.06] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.13em] text-orange-200 sm:px-3 sm:text-[9px] sm:tracking-[0.17em]">CIALTRONS</span>
-              <button type="button" aria-label="Apri impostazioni" aria-expanded={settingsOpen} onClick={() => setSettingsOpen((value) => !value)} className="flex size-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-white/65 transition hover:border-white/20 hover:text-white"><Settings2 size={17} /></button>
-            </div>
-          </header>
-
-          <div className="mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col items-center justify-center gap-3 pb-2 pt-3 sm:gap-4 sm:pt-4">
-            <div className="shrink-0 text-center">
-              <div className="mb-1.5 flex items-center justify-center gap-2 text-[8px] font-black uppercase tracking-[0.3em] text-lime-300 sm:text-[9px]"><span className="size-1 rounded-full bg-lime-300" />La tua panchina, la tua legge</div>
-              <p className="text-xs text-white/45 sm:text-sm">La prossima giornata, giocata con più <span className="text-white/80">vibes.</span></p>
-            </div>
-
-            <section className="grid w-full max-w-2xl shrink-0 overflow-hidden rounded-[22px] border border-white/[0.09] bg-[#111411] shadow-[0_20px_90px_rgba(0,0,0,0.28)] sm:grid-cols-[1fr_150px]">
-              <div className="flex min-h-[150px] flex-col items-center justify-center px-5 py-4 text-center sm:min-h-[164px] sm:px-8">
-                {scanning ? <>
-                  <div className="mb-2 flex size-9 items-center justify-center rounded-xl border border-lime-300/20 bg-lime-300/10 text-lime-300"><LoaderCircle size={19} className="animate-spin" /></div>
-                  <p className="text-sm font-bold">Sto leggendo la tua rosa</p><p className="mt-1 max-w-[240px] truncate text-[10px] text-white/45">{fileName} · {progress}%</p>
-                  <div className="mt-2.5 h-1 w-40 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-lime-300 transition-all" style={{ width: `${progress}%` }} /></div>
-                </> : <>
-                  <div className="mb-2 flex size-9 items-center justify-center rounded-xl border border-lime-300/20 bg-lime-300/10 text-lime-300"><ScanLine size={19} /></div>
-                  <h2 className="text-sm font-bold sm:text-base">Carica lo screenshot della rosa</h2>
-                  <p className="mt-1 max-w-xs text-[10px] leading-4 text-white/45 sm:text-xs">Leggiamo i nomi con OCR e li abbiniamo al database con Fuse.js.</p>
-                  <label htmlFor="roster-image" className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-lime-300 px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.08em] text-[#13170e] transition hover:bg-lime-200 sm:text-[11px]"><FileImage size={15} />{hasUploaded ? "Cambia screenshot rosa" : "Carica screenshot rosa"}<ArrowRight size={14} /></label>
-                </>}
-                <input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica screenshot della rosa" />
-              </div>
-              <div className="relative hidden min-h-[164px] overflow-hidden border-l border-white/[0.07] bg-[#161c15] sm:block">
-                {screenshotUrl ? <img src={screenshotUrl} alt="Anteprima dello screenshot caricato" className="absolute inset-0 size-full object-cover opacity-65" /> : <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_50%_120%,rgba(163,230,53,.18),transparent_62%)]" />}
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                  {!screenshotUrl && <div className="grid grid-cols-3 gap-1.5 opacity-70">{Array.from({ length: 9 }).map((_, index) => <span key={index} className="flex size-7 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04]"><Users size={12} className="text-lime-200/70" /></span>)}</div>}
-                  {screenshotUrl && <span className="rounded-full bg-black/65 px-3 py-1.5 text-[9px] font-bold text-lime-100 backdrop-blur">SCREENSHOT CARICATO</span>}
-                  {!screenshotUrl && <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/40">La tua rosa, in campo</p>}
-                </div>
-              </div>
-            </section>
-
-            <section className="w-full max-w-2xl shrink-0" aria-label="Anteprima rosa">
-              <div className="mb-1.5 flex items-center justify-between px-0.5">
-                <div className="flex items-center gap-2"><span className="text-[9px] font-black uppercase tracking-[0.18em] text-white/50">{hasUploaded ? "ROSA RICONOSCIUTA" : "ROSA DEMO · 20 GIOCATORI"}</span><span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-bold text-white/40">{squad.length}</span></div>
-                <span className="flex items-center gap-1 text-[9px] text-white/30"><span className={`size-1.5 rounded-full ${hasUploaded ? (scanning ? "animate-pulse bg-amber-300" : "bg-lime-300") : "bg-white/25"}`} />{hasUploaded ? (scanning ? "scansione" : "rosa pronta") : "esempio"}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-1.5">
-                {previewPlayers.map((player) => <div key={player.id} className="flex min-w-0 items-center gap-1.5 rounded-lg border border-white/[0.07] bg-[#111411] px-1.5 py-1.5 sm:gap-2 sm:px-2"><span className={`flex size-5 shrink-0 items-center justify-center rounded-md border text-[8px] font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span><span className="min-w-0 flex-1 truncate text-[9px] font-semibold text-white/75 sm:text-[10px]">{player.name}</span><span className={`shrink-0 rounded-md border px-1 py-0.5 text-[8px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}%</span></div>)}
-                {squad.length > previewPlayers.length && <div className="flex items-center justify-center rounded-lg border border-dashed border-white/10 px-2 py-1.5 text-[9px] font-bold text-white/40 sm:col-span-2">+{squad.length - previewPlayers.length} in rosa</div>}
-              </div>
-              {notice && <p aria-live="polite" className="mt-1.5 text-center text-[9px] text-lime-100/75">{notice}</p>}
-              {!hasUploaded && <p className="mt-1.5 text-center text-[9px] text-white/30">Valori di esempio · non sono dati live</p>}
-            </section>
-          </div>
-
-          {hasUploaded && <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.06] bg-[#0b0d0b]/95 px-4 pb-[max(10px,env(safe-area-inset-bottom))] pt-2.5 backdrop-blur-xl sm:px-8 sm:pt-3"><button type="button" disabled={scanning || loadingTips} onClick={() => void openTips()} className="mx-auto flex w-full max-w-2xl items-center justify-center gap-2 rounded-2xl bg-[#f3dc55] px-5 py-3 text-[11px] font-black tracking-[0.08em] text-[#171608] shadow-[0_8px_35px_rgba(243,220,85,0.12)] transition hover:bg-[#ffe96a] disabled:cursor-wait disabled:opacity-50 sm:py-3.5 sm:text-xs">{loadingTips ? <LoaderCircle size={16} className="animate-spin" /> : <Flame size={16} fill="currentColor" />} CONSIGLI PROSSIMA <ArrowRight size={16} /></button></div>}
-
-          {settingsOpen && <div className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] sm:bg-black/35" onClick={() => setSettingsOpen(false)}>
-            <section role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()} className="absolute right-3 top-[62px] w-[min(340px,calc(100vw-24px))] rounded-2xl border border-white/10 bg-[#151915] p-4 shadow-2xl sm:right-[max(calc((100vw-1152px)/2),32px)] sm:top-[76px]">
-              <div className="mb-4 flex items-center justify-between"><h2 id="settings-title" className="text-sm font-black">Impostazioni</h2><button type="button" aria-label="Chiudi impostazioni" onClick={() => setSettingsOpen(false)} className="rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"><X size={16} /></button></div>
-              <div className="flex flex-col gap-4">
-                <div><p className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-white/40">Modalità fantacalcio</p><div className="grid grid-cols-2 gap-2">{(["Classic", "Mantra"] as Mode[]).map((option) => <button key={option} type="button" aria-pressed={mode === option} onClick={() => { setMode(option); setFormationIndex(0) }} className={`rounded-xl border px-3 py-2.5 text-xs font-black transition ${mode === option ? "border-lime-300 bg-lime-300 text-[#13170e]" : "border-white/10 bg-white/[0.03] text-white/65 hover:text-white"}`}>{option}</button>)}</div></div>
-                <SettingToggle label="Modificatore difesa" description="Mostra e valorizza la linea difensiva" checked={defenseModifier} onChange={setDefenseModifier} />
-                <SettingToggle label="Evita rischio <60%" description="Esclude i titolari incerti, con fallback se servono" checked={avoidRisk} onChange={setAvoidRisk} />
-              </div>
-            </section>
-          </div>}
+    <main className="min-h-[100svh] bg-[#0a0c1e] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">
+      {page === "home" && <div className="mx-auto flex h-[100svh] w-full max-w-6xl flex-col overflow-hidden px-4 pb-3 sm:px-8 sm:pb-5">
+        <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] py-3 sm:py-4">
+          <div className="flex min-w-0 items-center gap-2.5"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#ffe85e] text-[#0a0c1e]"><CircleDot size={20} strokeWidth={2.6} /></span><div><h1 className="text-xl font-black tracking-[0.11em] sm:text-2xl">A S <span className="text-[#ffe85e]">TRONZO</span></h1><p className="text-[8px] font-bold uppercase tracking-[0.24em] text-white/40">CIALTRONS LEAGUE</p></div></div>
+          <button type="button" aria-label="Apri impostazioni" onClick={() => setSettingsOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 transition hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={18} /></button>
+        </header>
+        <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center gap-2.5 py-2 sm:gap-3.5 sm:py-4">
+          <section className="flex shrink-0 items-center gap-3 rounded-[22px] border border-white/[0.09] bg-[#151732] px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-[#ffe85e]/20 bg-[#ffe85e]/[0.08] text-[#ffe85e] sm:size-16"><span className="text-[30px] leading-none" aria-hidden="true">📷</span></div>
+            <div className="min-w-0 flex-1"><h2 className="text-sm font-black leading-tight sm:text-base">Carica screenshot rosa Fantacalcio</h2><p className="mt-1 hidden text-[10px] text-white/45 sm:block">Tesseract legge i nomi; Fuse.js li abbina alla rosa.</p><label htmlFor="roster-image" className={`mt-2.5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-white px-3.5 py-2 text-[10px] font-black text-[#0a0c1e] transition hover:bg-[#ffe85e] sm:mt-3 sm:px-4 sm:py-2.5 sm:text-xs`}>{scanning ? <><LoaderCircle size={14} className="animate-spin" />LETTURA {progress}%</> : <><Users size={14} />SCEGLI IMMAGINE</>}</label></div>
+            <input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Scegli screenshot della rosa" disabled={scanning} />
+          </section>
+          <label className="flex shrink-0 flex-col gap-1 text-[9px] font-bold uppercase tracking-[0.14em] text-white/55">Nome squadra<input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="es. A S Tronzo" className="h-10 rounded-xl border border-white/10 bg-[#151732] px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-white/30 focus:border-[#ffe85e]/60 sm:h-11" /></label>
+          <fieldset className="shrink-0"><legend className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-white/55">Scegli la tua lega</legend><div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            {([{ name: "Classic" as Mode, icon: "⚽", roles: "Dif · C · A" }, { name: "Mantra" as Mode, icon: "🎭", roles: "Dc · Dd · E · M · C · T · W · Pc" }]).map((option) => <button key={option.name} type="button" aria-pressed={mode === option.name} onClick={() => { setMode(option.name); setFormationIndex(0) }} className={`flex min-h-[80px] flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition sm:min-h-[94px] sm:px-5 sm:py-3 ${mode === option.name ? "border-[#ffe85e] bg-[#ffe85e]/[0.12] shadow-[0_0_24px_rgba(255,232,94,0.07)]" : "border-white/10 bg-[#151732] hover:border-white/25"}`}><span className="flex w-full items-center justify-between"><span className="text-[23px] leading-none" aria-hidden="true">{option.icon}</span>{mode === option.name && <Check size={15} className="text-[#ffe85e]" />}</span><span className={`mt-1.5 text-xs font-black tracking-[0.11em] sm:text-sm ${mode === option.name ? "text-[#ffe85e]" : "text-white/85"}`}>{option.name.toUpperCase()}</span><span className="mt-0.5 text-[8px] text-white/45 sm:text-[9px]">{option.roles}</span></button>)}
+          </div></fieldset>
+          <SettingSwitch label="MODIFICATORE DIFESA" detail="Valuta la linea difensiva e il bonus MV" checked={defenseModifier} onChange={setDefenseModifier} large />
+          {scanNotice && <p role="status" className="text-center text-[10px] leading-4 text-amber-100/80">{scanNotice}</p>}
+          <p className="text-center text-[8px] text-white/25">Le tue preferenze vengono salvate automaticamente su questo dispositivo.</p>
         </div>
-      ) : (
-        <div className="min-h-[100svh] px-4 pb-8 sm:px-8">
-          <header className="mx-auto flex w-full max-w-6xl items-center justify-between border-b border-white/[0.07] py-3.5 sm:py-5">
-            <button type="button" onClick={returnHome} className="inline-flex items-center gap-2 text-[10px] font-bold text-white/55 transition hover:text-white sm:text-[11px]"><ArrowLeft size={16} />TORNA ALLA ROSA</button>
-            <div className="flex items-center gap-2 text-[10px] font-black tracking-[0.12em] sm:text-[11px]">A S <span className="text-lime-300">TRONZO</span></div>
-            <div className="flex items-center gap-1.5 rounded-full border border-lime-300/15 bg-lime-300/[0.05] px-2.5 py-1.5 text-[8px] font-bold text-lime-100/70 sm:px-3 sm:text-[9px]"><Activity size={12} />{loadingTips ? "RICERCA SQUADRE" : "ANALISI ROSA"}</div>
-          </header>
+        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { setMode(value); setFormationIndex(0) }} defenseModifier={defenseModifier} setDefenseModifier={setDefenseModifier} avoidRisk={avoidRisk} setAvoidRisk={setAvoidRisk} onClose={() => setSettingsOpen(false)} />}
+      </div>}
 
-          <div className="mx-auto max-w-6xl pt-5 sm:pt-8">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div><div className="mb-1.5 flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.24em] text-lime-300"><Sparkles size={13} />ANALISI DELLA GIORNATA</div><h1 className="text-2xl font-black tracking-[-0.06em] sm:text-4xl">I tuoi <span className="text-lime-300">consigli.</span></h1><p className="mt-1 text-[10px] text-white/45 sm:text-xs">{squad.length} giocatori · {mode} · scegli il modulo</p></div>
-              <span className="rounded-full border border-orange-300/20 bg-orange-300/[0.06] px-3 py-1.5 text-[8px] font-black uppercase tracking-[0.16em] text-orange-200">CIALTRONS</span>
-            </div>
+      {page === "roster" && <div className="min-h-[100svh] px-4 pb-28 sm:px-8 sm:pb-32">
+        <header className="mx-auto flex w-full max-w-5xl items-center justify-between border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex items-center gap-2 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={16} /> HOME</button><span className="rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[9px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning} /></header>
+        <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[10px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[9px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
+          {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-xs leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
+          {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><span className={`flex size-10 shrink-0 items-center justify-center rounded-xl border text-xs font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45">Classic {player.position} <span className="mx-1 text-white/20">·</span> Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span className="text-[9px] font-bold text-[#ffe85e]">xG {player.xg.toFixed(2)}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
+        </section>
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.07] bg-[#0a0c1e]/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-8"><button type="button" disabled={!squad.length} onClick={() => { setFormationIndex(0); setPage("formation") }} className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl bg-[#ffe85e] px-5 py-3.5 text-xs font-black tracking-[0.08em] text-[#0a0c1e] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-35 sm:py-4 sm:text-sm"><Flame size={17} fill="currentColor" />FORMAZIONE CONSIGLIATA <ArrowRight size={17} /></button></div>
+      </div>}
 
-            <nav aria-label={`Moduli ${mode}`} className="mt-4 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mt-6">
-              {formations.map((formation, index) => <button key={formation.name} type="button" onClick={() => setFormationIndex(index)} aria-pressed={index === formationIndex} className={`shrink-0 rounded-xl border px-3.5 py-2 text-[11px] font-black tracking-wide transition sm:px-4 sm:py-2.5 sm:text-xs ${index === formationIndex ? "border-lime-300 bg-lime-300 text-[#10150d] shadow-[0_4px_20px_rgba(190,242,100,.12)]" : "border-white/[0.08] bg-white/[0.025] text-white/55 hover:border-white/20 hover:text-white"}`}>{formation.name}</button>)}
-            </nav>
-
-            <section aria-label={`Campo ${currentFormation.name}`} className="relative mt-2 min-h-[60vh] overflow-hidden rounded-[22px] border border-emerald-100/10 bg-[#183322] shadow-[0_22px_70px_rgba(0,0,0,.3)] sm:mt-3">
-              <div className="pointer-events-none absolute inset-2.5 rounded-[13px] border border-white/20 sm:inset-5" />
-              <div className="pointer-events-none absolute left-2.5 right-2.5 top-1/2 border-t border-white/20 sm:left-5 sm:right-5" />
-              <div className="pointer-events-none absolute left-1/2 top-1/2 size-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20 sm:size-32" />
-              <div className="pointer-events-none absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/40" />
-              <div className="pointer-events-none absolute left-1/2 top-2.5 h-9 w-28 -translate-x-1/2 rounded-b-xl border-x border-b border-white/20 sm:top-5 sm:h-16 sm:w-48" />
-              <div className="pointer-events-none absolute bottom-2.5 left-1/2 h-9 w-28 -translate-x-1/2 rounded-t-xl border-x border-t border-white/20 sm:bottom-5 sm:h-16 sm:w-48" />
-              <div className="relative z-10 grid min-h-[60vh] grid-rows-4 px-3 py-5 sm:px-9 sm:py-8">
-                {(["P", "D", "C", "A"] as Position[]).map((position) => {
-                  const players = lineup[position]
-                  return <div key={position} className="flex min-w-0 flex-col items-center justify-center gap-1 sm:gap-2">
-                    <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[7px] font-black uppercase tracking-[0.17em] text-white/50 backdrop-blur-sm sm:gap-1.5 sm:px-2.5 sm:py-1 sm:text-[8px]"><span className={`size-1.5 rounded-full ${position === "A" ? "bg-orange-300" : position === "C" ? "bg-amber-200" : position === "D" ? "bg-emerald-200" : "bg-sky-200"}`} />{position} · {players.length}</div>
-                    <div className="flex w-full flex-wrap items-center justify-center gap-x-1 gap-y-0 sm:gap-x-5 sm:gap-y-1">{players.map((player) => <PitchPlayer key={player.id} player={player} onSelect={setSelectedPlayer} />)}</div>
-                  </div>
-                })}
-              </div>
-              <div className="absolute bottom-2 right-4 text-[7px] font-black uppercase tracking-[0.18em] text-white/25 sm:bottom-3 sm:right-6 sm:text-[8px]">A S TRONZO · {currentFormation.name}</div>
-            </section>
-
-            <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-[#111411] p-3 sm:grid-cols-4 sm:gap-3 sm:p-4">
-              <SummaryMetric label="xG + xA totali" value={lineupXgXa.toFixed(2)} accent="text-lime-200" />
-              <SummaryMetric label="Titolarità media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" />
-              <SummaryMetric label="Modalità" value={mode} accent="text-sky-200" />
-              <SummaryMetric label="Modificatore" value={defenseModifier ? "ON" : "OFF"} accent={defenseModifier ? "text-amber-200" : "text-white/50"} />
-            </section>
-
-            <div role="status" className={`mt-3 flex items-start gap-2 rounded-xl border px-3.5 py-3 text-[10px] leading-5 sm:text-xs ${injuredStarters.length || lowRiskFallbacks.length || missingStarters ? "border-amber-300/15 bg-amber-300/[0.05] text-amber-100/75" : "border-lime-300/10 bg-lime-300/[0.035] text-white/50"}`}>
-              {injuredStarters.length || lowRiskFallbacks.length || missingStarters ? <TriangleAlert size={14} className="mt-0.5 shrink-0 text-amber-200" /> : <Shield size={14} className="mt-0.5 shrink-0 text-lime-200/70" />}
-              <span>{missingStarters ? `Formazione incompleta: mancano ${missingStarters} giocator${missingStarters === 1 ? "e" : "i"} per arrivare a 11. Carica uno screenshot più leggibile o completo. ` : ""}{injuredStarters.length ? `Da verificare: ${injuredStarters.map((player) => player.name).join(", ")} risulta indisponibile nel database demo. ` : ""}{lowRiskFallbacks.length ? `Fallback titolarità: ${lowRiskFallbacks.map((player) => `${player.name} (${player.titolarita}%)`).join(", ")} schierat${lowRiskFallbacks.length === 1 ? "o" : "i"} per completare la formazione. ` : ""}{defenseModifier ? `Modificatore difesa attivo: media voto dei difensori ${lineup.D.length ? (lineup.D.reduce((sum, player) => sum + player.mv, 0) / lineup.D.length).toFixed(2) : "—"}.` : "Modificatore difesa disattivato."}</span>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] pt-3 text-[9px] text-white/30"><span>Statistiche, avversari e titolarità sono stime demo, non dati live.</span><button type="button" onClick={() => { setScreen("home"); setSettingsOpen(true) }} className="inline-flex items-center gap-1 text-white/50 transition hover:text-white">Impostazioni <ChevronDown size={12} /></button></div>
-          </div>
+      {page === "formation" && <div className="min-h-[100svh] px-3 pb-8 sm:px-8">
+        <header className="mx-auto flex w-full max-w-6xl items-center justify-between border-b border-white/[0.07] py-3 sm:py-4"><button type="button" onClick={() => setPage("roster")} className="inline-flex items-center gap-1.5 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={15} /> ROSA <span className="hidden sm:inline">· {squad.length}</span></button><div className="min-w-0 px-2 text-center"><h1 className="truncate text-sm font-black sm:text-lg">{teamName.trim() || "La tua squadra"}</h1><p className="text-[8px] font-bold uppercase tracking-widest text-[#ffe85e]">{mode} · {currentFormation.name}</p></div><button type="button" aria-label="Apri impostazioni formazione" onClick={() => setSettingsOpen(true)} className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={17} /></button></header>
+        <div className="mx-auto max-w-6xl pt-3 sm:pt-5"><div className="mb-2 flex items-center justify-between gap-2"><p className="text-[9px] font-black uppercase tracking-[0.17em] text-white/50">Scegli modulo <span className="text-[#ffe85e]">· {mode}</span></p><span className="shrink-0 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-2.5 py-1 text-[8px] font-black tracking-wider text-[#ffe85e]">{mode.toUpperCase()}</span></div>
+          <nav aria-label={`Moduli ${mode}`} className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{formations.map((formation, index) => <button key={formation.name} type="button" aria-pressed={index === formationIndex} onClick={() => setFormationIndex(index)} className={`shrink-0 rounded-2xl border px-5 py-3 text-sm font-black tracking-wide transition ${index === formationIndex ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e] shadow-[0_5px_22px_rgba(255,232,94,0.13)]" : "border-white/15 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-white"}`}>{formation.name}</button>)}</nav>
+          {riskPlayers.length > 0 || missingStarters > 0 ? <div role="alert" className="mt-2 flex items-start gap-2.5 rounded-2xl border border-rose-300/30 bg-rose-400/10 px-3.5 py-3 text-[10px] leading-5 text-rose-100 sm:text-xs"><TriangleAlert size={16} className="mt-0.5 shrink-0 text-rose-300" /><div><p className="font-black uppercase tracking-wider">{missingStarters ? `Formazione incompleta · ${missingStarters} ${missingStarters === 1 ? "posto" : "posti"} vuoti` : "Attenzione: rischio formazione"}</p><p className="mt-0.5 text-rose-100/75">{riskPlayers.length ? `Da verificare: ${riskPlayers.map((player) => `${player.name}${player.inj ? " · infortunio" : ` · ${player.titolarita}%`}`).join(", ")}.` : "Carica altri giocatori per completare l'undici."}{fallbackPlayers.length > 0 ? ` Fallback sotto il 60%: ${fallbackPlayers.map((player) => player.name).join(", ")}.` : ""}</p></div></div> : null}
+          <section aria-label={`Campo formazione ${currentFormation.name}`} className="relative mt-2 min-h-[65vh] overflow-hidden rounded-[24px] border border-emerald-100/10 bg-[linear-gradient(135deg,#14532d,#166534_48%,#14532d)] shadow-[0_22px_70px_rgba(0,0,0,.32)] sm:mt-3">
+            <div className="pointer-events-none absolute inset-2 rounded-[17px] border border-white/20 sm:inset-4" /><div className="pointer-events-none absolute left-2 right-2 top-1/2 border-t border-white/20 sm:left-4 sm:right-4" /><div className="pointer-events-none absolute left-1/2 top-1/2 size-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20 sm:size-28" /><div className="pointer-events-none absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/50" /><div className="pointer-events-none absolute left-1/2 top-2 h-8 w-28 -translate-x-1/2 rounded-b-xl border-x border-b border-white/20 sm:top-4 sm:h-14 sm:w-44" /><div className="pointer-events-none absolute bottom-2 left-1/2 h-8 w-28 -translate-x-1/2 rounded-t-xl border-x border-t border-white/20 sm:bottom-4 sm:h-14 sm:w-44" />
+            <div className="relative z-10 grid min-h-[65vh] grid-rows-4 px-2 py-4 sm:px-8 sm:py-6">{(["P", "D", "C", "A"] as Position[]).map((position) => { const players = lineup[position]; return <div key={position} className="flex min-w-0 flex-col items-center justify-center gap-1"><div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.15em] text-white/55 backdrop-blur-sm"><span className={`size-1.5 rounded-full ${position === "A" ? "bg-orange-300" : position === "C" ? "bg-amber-200" : position === "D" ? "bg-emerald-200" : "bg-sky-200"}`} />{position} · {POSITION_NAMES[position]} · {players.length}</div><div className="flex w-full flex-wrap items-center justify-center gap-x-1 gap-y-0.5 sm:gap-x-5">{players.map((player) => <PitchPlayer key={player.id} player={player} onSelect={setSelectedPlayer} />)}</div></div>})}</div>
+            <span className="absolute bottom-3 right-5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">A S TRONZO · {currentFormation.name}</span>
+          </section>
+          <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-white/[0.07] bg-[#151732] p-3 sm:gap-3 sm:p-4"><Metric label="xG totali" value={totalXg.toFixed(2)} accent="text-[#ffe85e]" /><Metric label="xA totali" value={totalXa.toFixed(2)} accent="text-sky-200" /><Metric label="Titol. media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" /></section>
+          {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media MV difensori: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus demo</p><p className="text-xl font-black text-sky-200">+{defenseBonus}</p></div></section>}
+          <p className="mt-3 text-center text-[9px] text-white/35">Formazione calcolata soltanto sui {squad.length} giocatori riconosciuti nella tua rosa. Le statistiche sono illustrative.</p>
         </div>
-      )}
-      {selectedPlayer && <PlayerModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
+        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { setMode(value); setFormationIndex(0) }} defenseModifier={defenseModifier} setDefenseModifier={setDefenseModifier} avoidRisk={avoidRisk} setAvoidRisk={setAvoidRisk} onClose={() => setSettingsOpen(false)} />}
+      </div>}
+      {selectedPlayer && page === "formation" && <PlayerModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
     </main>
   )
 }
 
-function SettingToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-4 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3 text-left transition hover:bg-white/[0.05]"><span><span className="block text-xs font-bold text-white/85">{label}</span><span className="mt-1 block text-[10px] text-white/40">{description}</span></span><span className={`relative h-5 w-9 shrink-0 rounded-full transition ${checked ? "bg-lime-300" : "bg-white/20"}`}><span className={`absolute top-0.5 size-4 rounded-full bg-[#10140b] transition ${checked ? "left-[18px]" : "left-0.5"}`} /></span></button>
-}
-
-function SummaryMetric({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return <div className="flex flex-col gap-1 border-white/[0.06] px-1 sm:border-r sm:px-2 last:border-r-0"><span className="text-[8px] font-bold uppercase tracking-[0.12em] text-white/35 sm:text-[9px]">{label}</span><span className={`text-sm font-black ${accent} sm:text-base`}>{value}</span></div>
+function Metric({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return <div className="min-w-0 rounded-xl border border-white/[0.05] bg-white/[0.025] p-2.5 sm:p-3"><p className="truncate text-[8px] font-bold uppercase tracking-widest text-white/40 sm:text-[9px]">{label}</p><p className={`mt-1 text-lg font-black sm:text-xl ${accent}`}>{value}</p></div>
 }

@@ -178,6 +178,43 @@ function recommendFormation(squad: Player[], formations: Formation[], mode: Mode
   return options.sort((a, b) => b.score - a.score || b.filledSlots - a.filledSlots || b.playerValue - a.playerValue)[0]
 }
 
+type BenchRecommendation = { player: Player; position: Position; flexible: boolean }
+
+function recommendBench(squad: Player[], starters: Player[], mode: Mode, avoidRisk: boolean): BenchRecommendation[] {
+  const starterIds = new Set(starters.map((player) => player.id))
+  const available = squad.filter((player) => !starterIds.has(player.id) && !isUnavailable(player))
+  const benchByPosition: Record<Position, Player[]> = { P: [], D: [], C: [], A: [] }
+  const targets: Record<Position, number> = { P: 1, D: 2, C: 2, A: 2 }
+  const positions = (Object.keys(targets) as Position[]).sort((a, b) =>
+    available.filter((player) => canPlay(player, a, mode)).length / targets[a] -
+    available.filter((player) => canPlay(player, b, mode)).length / targets[b],
+  )
+  const usedIds = new Set<string>()
+
+  for (const position of positions) {
+    const candidates = available.filter((player) => !usedIds.has(player.id) && canPlay(player, position, mode))
+    const safe = avoidRisk ? candidates.filter((player) => player.titolarita >= 60) : candidates
+    const chosen = (safe.length >= targets[position] ? safe : candidates)
+      .sort((a, b) => getExpectedPlayerValue(b) - getExpectedPlayerValue(a))
+      .slice(0, Math.min(targets[position], 7 - usedIds.size))
+    benchByPosition[position] = chosen
+    chosen.forEach((player) => usedIds.add(player.id))
+  }
+
+  const bench: BenchRecommendation[] = (Object.keys(targets) as Position[]).flatMap((position) =>
+    benchByPosition[position].map((player) => ({ player, position, flexible: false })),
+  )
+  const remaining = available
+    .filter((player) => !usedIds.has(player.id) && (['P', 'D', 'C', 'A'] as Position[]).some((position) => canPlay(player, position, mode)))
+    .sort((a, b) => getExpectedPlayerValue(b) - getExpectedPlayerValue(a))
+
+  for (const player of remaining.slice(0, Math.max(0, 7 - bench.length))) {
+    const position = (['P', 'D', 'C', 'A'] as Position[]).find((candidate) => canPlay(player, candidate, mode)) ?? player.position
+    bench.push({ player, position, flexible: true })
+  }
+  return bench
+}
+
 function exactPlayerByName(name: string): Player | undefined {
   const normalizedName = normalizeName(name)
   return PLAYER_DB.find((player) => normalizeName(player.name) === normalizedName)
@@ -484,6 +521,7 @@ export default function Home() {
   const currentFormation = formations[formationIndex] ?? formations[0]
   const lineup = useMemo(() => getBestLineup(squad, currentFormation, mode, avoidRisk, defenseModifier), [squad, currentFormation, mode, avoidRisk, defenseModifier])
   const starters = useMemo(() => Object.values(lineup).flat(), [lineup])
+  const benchAdvice = useMemo(() => recommendBench(squad, starters, mode, avoidRisk), [squad, starters, mode, avoidRisk])
   const currentExpectedValue = starters.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
   const currentModifierBonus = defenseModifier ? getModifierBonus(lineup.D, lineup.P) * [...lineup.D, ...lineup.P].reduce((probability, player) => probability * getAvailability(player), 1) : 0
   const modifierGain = formationAdvice.withModifier.score - formationAdvice.withoutModifier.score
@@ -620,6 +658,10 @@ export default function Home() {
             <div className="pointer-events-none absolute inset-2 rounded-[17px] border border-white/20 sm:inset-4" /><div className="pointer-events-none absolute left-2 right-2 top-1/2 border-t border-white/20 sm:left-4 sm:right-4" /><div className="pointer-events-none absolute left-1/2 top-1/2 size-20 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20 sm:size-28" /><div className="pointer-events-none absolute left-1/2 top-1/2 size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/50" /><div className="pointer-events-none absolute left-1/2 top-2 h-8 w-28 -translate-x-1/2 rounded-b-xl border-x border-b border-white/20 sm:top-4 sm:h-14 sm:w-44" /><div className="pointer-events-none absolute bottom-2 left-1/2 h-8 w-28 -translate-x-1/2 rounded-t-xl border-x border-t border-white/20 sm:bottom-4 sm:h-14 sm:w-44" />
             <div className="relative z-10 grid min-h-[65vh] grid-rows-4 px-2 py-4 sm:px-8 sm:py-6">{(["P", "D", "C", "A"] as Position[]).map((position) => { const players = lineup[position]; return <div key={position} className="flex min-w-0 flex-col items-center justify-center gap-1"><div className="flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[8px] font-black uppercase tracking-[0.15em] text-white/55 backdrop-blur-sm"><span className={`size-1.5 rounded-full ${position === "A" ? "bg-orange-300" : position === "C" ? "bg-amber-200" : position === "D" ? "bg-emerald-200" : "bg-sky-200"}`} />{position} · {POSITION_NAMES[position]} · {players.length}</div><div className="flex w-full flex-wrap items-center justify-center gap-x-1 gap-y-0.5 sm:gap-x-5">{players.map((player) => <PitchPlayer key={player.id} player={player} onSelect={setSelectedPlayer} />)}</div></div>})}</div>
             <span className="absolute bottom-3 right-5 text-[8px] font-black uppercase tracking-[0.16em] text-white/30">A S TRONZO · {currentFormation.name}</span>
+          </section>
+          <section aria-label="Panchina consigliata" className="mt-4 rounded-[24px] border border-white/[0.08] bg-[#10132a] p-3.5 sm:p-5">
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xs font-black uppercase tracking-[0.14em] text-white sm:text-sm">Panchina consigliata</h2><p className="mt-1 text-[9px] leading-4 text-white/45">Fino a 7 riserve: copertura ruoli, titolarità e valore atteso. Infortunati e squalificati esclusi.</p></div><span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[8px] font-bold text-white/45">{benchAdvice.length}/7 disponibili</span></div>
+            {benchAdvice.length ? <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">{benchAdvice.map(({ player, position, flexible }, index) => <li key={player.id} className="min-w-0 rounded-2xl border border-white/[0.07] bg-[#181b36] p-2.5 sm:p-3"><div className="flex items-center justify-between gap-1"><span className="text-[8px] font-black uppercase tracking-wider text-white/35">{index + 1}ª riserva</span><span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black ${POSITION_COLORS[position]}`}>{flexible ? "JOLLY" : position}</span></div><p className="mt-2 truncate text-[11px] font-black text-white" title={player.name}>{player.name}</p><p className="truncate text-[8px] text-white/40">{player.team}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-md border px-1.5 py-1 text-[8px] font-bold ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titol.</span><span className="rounded-md bg-white/[0.06] px-1.5 py-1 text-[8px] font-bold text-white/65">MV {player.mv.toFixed(2)}</span></div><p className="mt-1.5 text-[8px] font-bold text-violet-200">Valore atteso {getExpectedPlayerValue(player).toFixed(2)}</p></li>)}</ol> : <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[10px] text-white/45">Non ci sono altri giocatori disponibili in panchina.</p>}
           </section>
           <section aria-label="Riepilogo formazione" className="mt-3 grid grid-cols-2 gap-2 rounded-2xl border border-white/[0.07] bg-[#151732] p-3 sm:grid-cols-4 sm:gap-3 sm:p-4"><Metric label="xG totali" value={totalXg.toFixed(2)} accent="text-[#ffe85e]" /><Metric label="xA totali" value={totalXa.toFixed(2)} accent="text-sky-200" /><Metric label="Titol. media" value={`${averageTitolarita.toFixed(0)}%`} accent="text-emerald-200" /><Metric label="Valore atteso" value={currentExpectedValue.toFixed(2)} accent="text-violet-200" /></section>
           {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media 3 migliori difensori + portiere: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[10px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}

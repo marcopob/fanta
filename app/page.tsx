@@ -704,8 +704,8 @@ export default function Home() {
   return (
     <main className="min-h-[100svh] bg-[#0a0c1e] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">
       {page === "home" && <div className="mx-auto flex h-[100svh] w-full max-w-6xl flex-col overflow-hidden px-4 pb-3 sm:px-8 sm:pb-5">
-<header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] py-4 sm:py-5">
-      <div className="flex min-w-0 flex-col items-start"><FantaVibesLogo large /><p className="-mt-1 mr-1 w-[184px] self-end text-right text-[9px] font-semibold uppercase leading-3 tracking-[0.12em] text-white/50">powered by the original chaltrons league</p></div>
+<header className="flex shrink-0 items-start justify-between border-b border-white/[0.07] py-4 sm:py-5">
+      <div className="flex min-w-0 items-start"><FantaVibesLogo large /><div className="-mt-0.5 ml-1 origin-top-left -rotate-[7deg] whitespace-nowrap text-right text-[8px] font-bold uppercase italic leading-[1.2] tracking-[0.1em] text-white/55"><p>powered by the original</p><p className="mt-1 text-[#ffe85e]/80">chaltrons league</p></div></div>
           <button type="button" aria-label="Apri impostazioni" onClick={() => setSettingsOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 transition hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={18} /></button>
         </header>
         <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center gap-2.5 py-2 sm:gap-3.5 sm:py-4">

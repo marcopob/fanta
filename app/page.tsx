@@ -396,12 +396,12 @@ function getTitolaritaStyle(value: number) {
   return "border-rose-300/30 bg-rose-300/15 text-rose-100"
 }
 
-function FantaVibesLogo() {
+function FantaVibesLogo({ large = false }: { large?: boolean }) {
   return (
-    <span role="img" aria-label="Fanta Vibes" className="relative block h-[52px] w-[126px] shrink-0 select-none">
-      <span className="absolute left-1 top-0 -rotate-[8deg] text-[25px] font-black italic leading-none tracking-[-0.09em] text-[#ffe85e]">FANTA</span>
-      <span aria-hidden="true" className="absolute left-1 top-[24px] h-[2px] w-[112px] -rotate-[8deg] bg-gradient-to-r from-[#ffe85e]/25 via-[#ffe85e] to-[#ffe85e]/30" />
-      <span className="absolute left-[31px] top-[29px] -rotate-[8deg] text-[22px] font-black italic leading-none tracking-[-0.07em] text-white">VIBES</span>
+    <span role="img" aria-label="Fanta Vibes" className={`relative block shrink-0 select-none ${large ? "h-[76px] w-[184px]" : "h-[52px] w-[126px]"}`}>
+      <span className={`absolute left-1 top-0 -rotate-[8deg] font-black italic leading-none tracking-[-0.09em] text-[#ffe85e] ${large ? "text-[36px]" : "text-[25px]"}`}>FANTA</span>
+      <span aria-hidden="true" className={`absolute left-1 -rotate-[8deg] bg-gradient-to-r from-[#ffe85e]/25 via-[#ffe85e] to-[#ffe85e]/30 ${large ? "top-[34px] h-[3px] w-[164px]" : "top-[24px] h-[2px] w-[112px]"}`} />
+      <span className={`absolute -rotate-[8deg] font-black italic leading-none tracking-[-0.07em] text-white ${large ? "left-[45px] top-[43px] text-[31px]" : "left-[31px] top-[29px] text-[22px]"}`}>VIBES</span>
     </span>
   )
 }
@@ -704,8 +704,8 @@ export default function Home() {
   return (
     <main className="min-h-[100svh] bg-[#0a0c1e] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">
       {page === "home" && <div className="mx-auto flex h-[100svh] w-full max-w-6xl flex-col overflow-hidden px-4 pb-3 sm:px-8 sm:pb-5">
-        <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] py-3 sm:py-4">
-          <div className="flex min-w-0 items-center gap-2.5"><FantaVibesLogo /><div className="min-w-0"><p className="truncate text-[12px] font-bold uppercase tracking-[0.2em] text-white/40">CIALTRONS LEAGUE</p><h1 className="mt-1 truncate text-sm font-black tracking-[0.04em] text-white sm:text-base">{teamName.trim() || "A S TRONZO"}</h1></div></div>
+<header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] py-4 sm:py-5">
+      <div className="flex min-w-0 flex-col items-start"><FantaVibesLogo large /><p className="-mt-1 ml-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/50">powered by the originale chaltrons league</p></div>
           <button type="button" aria-label="Apri impostazioni" onClick={() => setSettingsOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 transition hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={18} /></button>
         </header>
         <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center gap-2.5 py-2 sm:gap-3.5 sm:py-4">
@@ -715,7 +715,7 @@ export default function Home() {
             <input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Scegli screenshot della rosa" disabled={scanning || importingRoster} />
             <input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} />
           </section>
-          <label className="flex shrink-0 flex-col gap-1 text-[13px] font-bold uppercase tracking-[0.14em] text-white/55">Nome squadra<input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="es. A S Tronzo" className="h-10 rounded-xl border border-white/10 bg-[#151732] px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-white/30 focus:border-[#ffe85e]/60 sm:h-11" /></label>
+          <label className="flex shrink-0 flex-col gap-1 text-[13px] font-bold uppercase tracking-[0.14em] text-white/55">Nome squadra<input value={teamName} onChange={(event) => setTeamName(event.target.value)} placeholder="es. La mia squadra" className="h-10 rounded-xl border border-white/10 bg-[#151732] px-3 text-sm font-semibold normal-case tracking-normal text-white outline-none placeholder:text-white/30 focus:border-[#ffe85e]/60 sm:h-11" /></label>
           <fieldset className="shrink-0"><legend className="mb-1.5 text-[13px] font-bold uppercase tracking-[0.14em] text-white/55">Scegli la tua lega</legend><div className="grid grid-cols-2 gap-2.5 sm:gap-3">
             {([{ name: "Classic" as Mode, icon: "⚽", roles: "Dif · C · A" }, { name: "Mantra" as Mode, icon: "🎭", roles: "Dc · Dd · E · M · C · T · W · Pc" }]).map((option) => <button key={option.name} type="button" aria-pressed={mode === option.name} onClick={() => { setMode(option.name); setFormationIndex(0) }} className={`flex min-h-[80px] flex-col items-start justify-center rounded-2xl border px-3.5 py-2.5 text-left transition sm:min-h-[94px] sm:px-5 sm:py-3 ${mode === option.name ? "border-[#ffe85e] bg-[#ffe85e]/[0.12] shadow-[0_0_24px_rgba(255,232,94,0.07)]" : "border-white/10 bg-[#151732] hover:border-white/25"}`}><span className="flex w-full items-center justify-between"><span className="text-[23px] leading-none" aria-hidden="true">{option.icon}</span>{mode === option.name && <Check size={15} className="text-[#ffe85e]" />}</span><span className={`mt-1.5 text-sm font-black tracking-[0.11em] sm:text-sm ${mode === option.name ? "text-[#ffe85e]" : "text-white/85"}`}>{option.name.toUpperCase()}</span><span className="mt-0.5 text-[12px] text-white/45 sm:text-[13px]">{option.roles}</span></button>)}
           </div></fieldset>

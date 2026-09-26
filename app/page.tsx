@@ -438,7 +438,8 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
 
   return (
     <section aria-label="Benvenuto in Fanta Vibes" className="fixed inset-0 z-[100] isolate min-h-[100svh] overflow-hidden bg-[#0754bd] text-white">
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_50%_42%,rgba(96,190,255,0.78)_0%,rgba(25,116,229,0.58)_36%,rgba(4,42,117,0.98)_100%)]" />
+      <Image src="/football-pitch-background.png" alt="" fill priority sizes="100vw" className="-z-10 object-cover object-center opacity-35 mix-blend-screen" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_50%_42%,rgba(96,190,255,0.68)_0%,rgba(25,116,229,0.5)_36%,rgba(4,42,117,0.88)_100%)]" />
       <div aria-hidden="true" className="absolute inset-x-0 bottom-0 h-[36svh] bg-gradient-to-t from-[#031942]/60 to-transparent" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 overflow-hidden">
         {Array.from({ length: 34 }, (_, index) => (
@@ -828,7 +829,12 @@ export default function Home() {
   if (!introEntered) return <FantaVibesIntro onEnter={() => setIntroEntered(true)} />
 
   return (
-    <main className="min-h-[100svh] bg-[#0a0c1e] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">
+    <main className="relative isolate min-h-[100svh] bg-[#071b14] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <Image src="/football-pitch-background.png" alt="" fill priority sizes="100vw" className="object-cover object-center opacity-70" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,15,19,0.48),rgba(5,19,18,0.64)),radial-gradient(ellipse_at_center,transparent_10%,rgba(2,12,14,0.42)_100%)]" />
+      </div>
+      <div className="relative z-10">
       {page === "home" && <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col overflow-x-hidden px-4 pb-3 sm:px-8 sm:pb-5">
 <header className="flex shrink-0 items-start justify-between border-b border-white/[0.07] py-4 sm:py-5">
       <div className="flex min-w-0 items-start"><FantaVibesLogo large /><div className="-mt-0.5 ml-1 origin-top-left -rotate-[7deg] whitespace-nowrap text-right text-[8px] font-bold uppercase italic leading-[1.2] tracking-[0.1em] text-white/55"><p>powered by the original</p><p className="mt-1 text-[#ffe85e]/80">chaltrons league</p></div></div>
@@ -885,6 +891,7 @@ export default function Home() {
         </div>
         {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
       </div>}
+      </div>
       {selectedPlayer && <PlayerModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
     </main>
   )

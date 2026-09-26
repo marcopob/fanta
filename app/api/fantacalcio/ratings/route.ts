@@ -7,8 +7,9 @@ type RosterPlayer = {
 type OfficialRating = {
   name: string
   team: string
-  mv: number
-  appearances: number
+  mv?: number
+  appearances?: number
+  avatarUrl?: string
 }
 
 const TEAM_CODES: Record<string, string> = {
@@ -85,9 +86,20 @@ function parseOfficialRatings(html: string): OfficialRating[] {
     const team = extractCell(row, "player-team").toUpperCase()
     const appearances = Number.parseInt(extractCell(row, "player-match-playeds"), 10)
     const mv = Number.parseFloat(extractCell(row, "player-grade-avg").replace(",", "."))
+    const profileUrl = row.match(/<a\b[^>]*class="[^"]*\bplayer-link\b[^"]*"[^>]*href="([^"]+)"/i)?.[1]
+    const playerCardId = profileUrl?.match(/\/(\d+)\/\d{4}-\d{2}\/italia(?:[/?#]|$)/)?.[1]
+    const avatarUrl = playerCardId
+      ? `https://content.fantacalcio.it/web/campioncini/21/card/${playerCardId}.png?v=834`
+      : undefined
 
-    if (name && team && Number.isFinite(appearances) && Number.isFinite(mv)) {
-      ratings.push({ name, team, mv, appearances })
+    if (name && team) {
+      ratings.push({
+        name,
+        team,
+        ...(Number.isFinite(appearances) ? { appearances } : {}),
+        ...(Number.isFinite(mv) ? { mv } : {}),
+        ...(avatarUrl ? { avatarUrl } : {}),
+      })
     }
   }
 
@@ -168,8 +180,13 @@ export async function POST(request: Request) {
         ? candidates.find((candidate) => candidate.team === teamCode) ?? (candidates.length === 1 ? candidates[0] : undefined)
         : candidates.length === 1 ? candidates[0] : undefined
 
-      if (!matched || matched.appearances === 0) return []
-      return [{ id: player.id, mv: matched.mv, appearances: matched.appearances }]
+      if (!matched) return []
+      return [{
+        id: player.id,
+        ...(matched.mv !== undefined ? { mv: matched.mv } : {}),
+        ...(matched.appearances !== undefined ? { appearances: matched.appearances } : {}),
+        ...(matched.avatarUrl ? { avatarUrl: matched.avatarUrl } : {}),
+      }]
     })
 
     return Response.json({ season, sourceUrl, ratings })

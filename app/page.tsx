@@ -37,6 +37,7 @@ type Player = {
   mv: number
   mvSource?: "fantacalcio"
   mvSeason?: string
+  avatarUrl?: string
   inj: boolean
   suspended?: boolean
   reason: string
@@ -382,6 +383,7 @@ function isStoredPlayer(value: unknown): value is Player {
     && typeof player.titolarita === "number" && typeof player.hype === "number" && typeof player.mv === "number" && typeof player.inj === "boolean"
     && (player.mvSource === undefined || player.mvSource === "fantacalcio")
     && (player.mvSeason === undefined || typeof player.mvSeason === "string")
+    && (player.avatarUrl === undefined || (typeof player.avatarUrl === "string" && /^https:\/\/content\.fantacalcio\.it\/web\/campioncini\/21\/card\/\d+\.png\?v=834$/.test(player.avatarUrl)))
     && (player.suspended === undefined || typeof player.suspended === "boolean")
     && typeof player.reason === "string" && typeof player.opponent === "string"
 }
@@ -392,6 +394,17 @@ function getTitolaritaStyle(value: number) {
   return "border-rose-300/30 bg-rose-300/15 text-rose-100"
 }
 
+function PlayerAvatar({ player, className }: { player: Player; className: string }) {
+  const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+
+  return (
+    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-[#122b20] font-black text-white ${className}`} aria-hidden="true">
+      <span className="absolute inset-0 flex items-center justify-center">{initials}</span>
+      {player.avatarUrl && <img src={player.avatarUrl} alt="" className="absolute inset-0 size-full object-cover object-top" onError={(event) => { event.currentTarget.style.display = "none" }} />}
+    </span>
+  )
+}
+
 function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
   const isRisk = player.titolarita < 60 || isUnavailable(player)
   return (
@@ -400,10 +413,13 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
         <div className="h-1 bg-gradient-to-r from-[#ffe85e] via-orange-300 to-rose-400" />
         <div className="p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className={`mb-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${POSITION_COLORS[player.position]}`}>{player.position} · {player.team} · {player.mantraRoles.join(" / ")}</div>
-              <h2 id="player-modal-title" className="text-3xl font-black tracking-tight">{player.name}</h2>
-              <p className="mt-1 text-sm text-white/50">Avversario: {player.opponent}</p>
+            <div className="flex items-center gap-3">
+              <PlayerAvatar player={player} className="size-16 rounded-2xl text-sm" />
+              <div>
+                <div className={`mb-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest ${POSITION_COLORS[player.position]}`}>{player.position} · {player.team} · {player.mantraRoles.join(" / ")}</div>
+                <h2 id="player-modal-title" className="text-3xl font-black tracking-tight">{player.name}</h2>
+                <p className="mt-1 text-sm text-white/50">Avversario: {player.opponent}</p>
+              </div>
             </div>
             <button type="button" onClick={onClose} aria-label="Chiudi dettagli" className="rounded-full border border-white/10 p-2 text-white/60 hover:bg-white/10"><X size={18} /></button>
           </div>
@@ -423,11 +439,10 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
 }
 
 function PitchPlayer({ player, onSelect }: { player: Player; onSelect: (player: Player) => void }) {
-  const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
   return (
     <button type="button" onClick={() => onSelect(player)} aria-label={`Apri dettagli ${player.name}, ${player.titolarita}% titolarità`} className={`group flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-1.5 text-center transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#ffe85e] ${isUnavailable(player) ? "opacity-30 grayscale" : ""}`}>
-      <span className={`relative flex size-10 items-center justify-center rounded-full border-2 bg-[#122b20] text-[11px] font-black shadow-lg sm:size-12 sm:text-xs ${player.titolarita < 60 ? "border-dashed border-rose-300" : "border-white/65 group-hover:border-[#ffe85e]"}`}>
-        {initials}
+      <span className="relative">
+        <PlayerAvatar player={player} className={`size-10 rounded-full border-2 text-[11px] shadow-lg sm:size-12 sm:text-xs ${player.titolarita < 60 ? "border-dashed border-rose-300" : "border-white/65 group-hover:border-[#ffe85e]"}`} />
         <span className={`absolute -right-3 -top-2 rounded-full border px-1.5 py-0.5 text-[8px] font-black leading-none ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}%</span>
       </span>
       <span className="max-w-[80px] truncate text-[10px] font-bold sm:max-w-28 sm:text-[11px]">{player.name}</span>
@@ -633,7 +648,7 @@ export default function Home() {
       const result = await response.json() as {
         error?: string
         season?: string
-        ratings?: Array<{ id: string; mv: number; appearances: number }>
+        ratings?: Array<{ id: string; mv?: number; appearances?: number; avatarUrl?: string }>
       }
 
       if (!response.ok || !result.season || !Array.isArray(result.ratings)) {
@@ -642,16 +657,28 @@ export default function Home() {
 
       const officialRatings = new Map(
         result.ratings
-          .filter((rating) => typeof rating.id === "string" && Number.isFinite(rating.mv) && rating.appearances > 0)
-          .map((rating) => [rating.id, rating.mv]),
+          .filter((rating) => typeof rating.id === "string")
+          .map((rating) => [rating.id, rating]),
       )
       setSquad((currentSquad) => currentSquad.map((player) => {
-        const mv = officialRatings.get(player.id)
-        return mv === undefined ? player : { ...player, mv, mvSource: "fantacalcio", mvSeason: result.season }
+        const rating = officialRatings.get(player.id)
+        if (!rating) return player
+
+        const hasOfficialRating = Number.isFinite(rating.mv) && Number.isFinite(rating.appearances) && rating.appearances! > 0
+        const hasOfficialAvatar = typeof rating.avatarUrl === "string"
+          && rating.avatarUrl.startsWith("https://content.fantacalcio.it/web/campioncini/21/card/")
+
+        return {
+          ...player,
+          ...(hasOfficialRating ? { mv: rating.mv!, mvSource: "fantacalcio" as const, mvSeason: result.season } : {}),
+          ...(hasOfficialAvatar ? { avatarUrl: rating.avatarUrl } : {}),
+        }
       }))
 
-      const unmatched = squad.length - officialRatings.size
-      setRatingNotice(`${officialRatings.size} media voto ufficiali aggiornate per la stagione ${result.season}${unmatched ? ` · ${unmatched} senza voto disponibile o non riconosciuti` : ""}.`)
+      const portraitCount = result.ratings.filter((rating) => Boolean(rating.avatarUrl)).length
+      const ratingCount = result.ratings.filter((rating) => Number.isFinite(rating.mv) && Number.isFinite(rating.appearances) && rating.appearances! > 0).length
+      const unmatched = squad.length - portraitCount
+      setRatingNotice(`${portraitCount} caricature ufficiali assegnate · ${ratingCount} medie voto aggiornate${unmatched ? ` · ${unmatched} senza caricatura ufficiale riconosciuta` : ""} · stagione ${result.season}.`)
     } catch {
       setRatingNotice("Recupero non riuscito. Riprova tra poco: la rosa non è stata modificata.")
     } finally {
@@ -693,10 +720,10 @@ export default function Home() {
         <header className="mx-auto flex w-full max-w-5xl items-center justify-between border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex items-center gap-2 text-[10px] font-bold text-white/55 hover:text-white sm:text-xs"><ArrowLeft size={16} /> HOME</button><span className="rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[9px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[9px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[8px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[9px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[9px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[10px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[10px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[9px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[10px] leading-4 text-white/55">Aggiorna la MV ufficiale direttamente da Fantacalcio.it.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[9px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[9px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNAMENTO…" : "AGGIORNA MV"}</button></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[10px] leading-4 text-white/55">Scarica le caricature ufficiali dei giocatori e aggiorna i voti da Fantacalcio.it.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[9px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[9px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "FOTO + MV…" : "AGGIORNA FOTO + MV"}</button></div>
           {ratingNotice && <p role="status" className="mt-3 rounded-xl border border-violet-300/15 bg-violet-300/[0.05] px-4 py-3 text-[10px] leading-5 text-violet-100/80">{ratingNotice}</p>}
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-xs leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
-          {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><span className={`flex size-10 shrink-0 items-center justify-center rounded-xl border text-xs font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45">Classic {player.position} <span className="mx-1 text-white/20">·</span> Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span title={player.mvSource === "fantacalcio" ? `Media voto ufficiale Fantacalcio.it · ${player.mvSeason}` : "Media voto stimata, non ancora sincronizzata"} className={`text-[9px] font-bold ${player.mvSource === "fantacalcio" ? "text-violet-200" : "text-white/45"}`}>{player.mvSource === "fantacalcio" ? "MV FC" : "MV stima"} {player.mv.toFixed(2)}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
+          {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <article key={player.id} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 sm:p-4"><PlayerAvatar player={player} className="size-11 rounded-xl text-xs" /><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-sm font-black">{player.name}</h2><span className="truncate text-[9px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[9px] text-white/45"><span className={`mr-1 rounded border px-1 py-0.5 text-[8px] font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span>Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[9px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span title={player.mvSource === "fantacalcio" ? `Media voto ufficiale Fantacalcio.it · ${player.mvSeason}` : "Media voto stimata, non ancora sincronizzata"} className={`text-[9px] font-bold ${player.mvSource === "fantacalcio" ? "text-violet-200" : "text-white/45"}`}>{player.mvSource === "fantacalcio" ? "MV FC" : "MV stima"} {player.mv.toFixed(2)}</span></div></div></article>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-xs leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-xs font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
         </section>
         <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/[0.07] bg-[#0a0c1e]/95 px-4 pb-[max(12px,env(safe-area-inset-bottom))] pt-3 backdrop-blur-xl sm:px-8"><button type="button" disabled={!squad.length} onClick={() => { setFormationIndex(recommendedIndex); setPage("formation") }} className="mx-auto flex w-full max-w-5xl items-center justify-center gap-2 rounded-2xl bg-[#ffe85e] px-5 py-3.5 text-xs font-black tracking-[0.08em] text-[#0a0c1e] transition hover:bg-yellow-200 disabled:cursor-not-allowed disabled:opacity-35 sm:py-4 sm:text-sm"><Flame size={17} fill="currentColor" />FORMAZIONE CONSIGLIATA <ArrowRight size={17} /></button></div>
       </div>}
@@ -714,7 +741,7 @@ export default function Home() {
           </section>
           <section aria-label="Panchina consigliata" className="mt-4 rounded-[24px] border border-white/[0.08] bg-[#10132a] p-3.5 sm:p-5">
             <div className="mb-3 flex flex-wrap items-end justify-between gap-2"><div><h2 className="text-xs font-black uppercase tracking-[0.14em] text-white sm:text-sm">Panchina consigliata</h2><p className="mt-1 text-[9px] leading-4 text-white/45">Fino a 7 riserve: copertura ruoli, titolarità e voto medio atteso. Infortunati e squalificati esclusi.</p></div><span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[8px] font-bold text-white/45">{benchAdvice.length}/7 disponibili</span></div>
-            {benchAdvice.length ? <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">{benchAdvice.map(({ player, position, flexible }, index) => <li key={player.id} className="min-w-0 rounded-2xl border border-white/[0.07] bg-[#181b36] p-2.5 sm:p-3"><div className="flex items-center justify-between gap-1"><span className="text-[8px] font-black uppercase tracking-wider text-white/35">{index + 1}ª riserva</span><span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black ${POSITION_COLORS[position]}`}>{flexible ? "JOLLY" : position}</span></div><p className="mt-2 truncate text-[11px] font-black text-white" title={player.name}>{player.name}</p><p className="truncate text-[8px] text-white/40">{player.team}</p><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-md border px-1.5 py-1 text-[8px] font-bold ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titol.</span><span className="rounded-md bg-white/[0.06] px-1.5 py-1 text-[8px] font-bold text-white/65">MV {player.mv.toFixed(2)}</span></div><p className="mt-1.5 text-[8px] font-bold text-violet-200">Voto atteso {getExpectedPlayerValue(player).toFixed(2)}</p></li>)}</ol> : <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[10px] text-white/45">Non ci sono altri giocatori disponibili in panchina.</p>}
+            {benchAdvice.length ? <ol className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">{benchAdvice.map(({ player, position, flexible }, index) => <li key={player.id} className="min-w-0 rounded-2xl border border-white/[0.07] bg-[#181b36] p-2.5 sm:p-3"><div className="flex items-center justify-between gap-1"><span className="text-[8px] font-black uppercase tracking-wider text-white/35">{index + 1}ª riserva</span><span className={`rounded-md border px-1.5 py-0.5 text-[8px] font-black ${POSITION_COLORS[position]}`}>{flexible ? "JOLLY" : position}</span></div><div className="mt-2 flex min-w-0 items-center gap-2"><PlayerAvatar player={player} className="size-8 rounded-lg text-[8px]" /><div className="min-w-0"><p className="truncate text-[11px] font-black text-white" title={player.name}>{player.name}</p><p className="truncate text-[8px] text-white/40">{player.team}</p></div></div><div className="mt-2 flex flex-wrap gap-1"><span className={`rounded-md border px-1.5 py-1 text-[8px] font-bold ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titol.</span><span className="rounded-md bg-white/[0.06] px-1.5 py-1 text-[8px] font-bold text-white/65">MV {player.mv.toFixed(2)}</span></div><p className="mt-1.5 text-[8px] font-bold text-violet-200">Voto atteso {getExpectedPlayerValue(player).toFixed(2)}</p></li>)}</ol> : <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-[10px] text-white/45">Non ci sono altri giocatori disponibili in panchina.</p>}
           </section>
           <section aria-label="Risultato probabile" className="mt-3 rounded-[24px] border border-[#ffe85e]/20 bg-[linear-gradient(135deg,rgba(255,232,94,.10),rgba(21,23,50,.92)_58%)] p-4 sm:p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#ffe85e]">Risultato probabile</p><p className="mt-1 text-[9px] leading-4 text-white/45">Media voto dei giocatori schierati: {expectedAverageRating.toFixed(2)}{allRatingsOfficial ? " (Fantacalcio.it)" : ""}{defenseModifier ? " + modificatore difesa atteso" : ""}.</p></div><div className="text-right"><p className="text-3xl font-black leading-none text-white sm:text-4xl">{expectedTeamGoals}<span className="ml-1 text-xs font-bold text-white/40">gol</span></p><p className="mt-1 text-[10px] font-black text-[#ffe85e]">{expectedTeamScore.toFixed(1)} pt probabili</p><p className="mt-1 text-[8px] font-bold uppercase tracking-wider text-white/35">stima su {starters.length} titolari</p></div></div><div className="mt-4 flex items-center justify-between gap-3"><div><p className="text-[10px] font-black text-white">Risultato stimato: {expectedTeamGoals} gol</p><p className="mt-1 text-[8px] text-white/45">Primo gol a 66 pt, poi uno ogni 6 · {pointsToNextGoal > 0 ? `${pointsToNextGoal.toFixed(1)} pt al prossimo gol (soglia ${nextGoalThreshold})` : `Soglia ${nextGoalThreshold} raggiunta`}</p></div><span className="shrink-0 rounded-xl border border-[#ffe85e]/20 bg-[#ffe85e]/10 px-3 py-2 text-[10px] font-black text-[#ffe85e]">{expectedAttendance.toFixed(1)} / {starters.length} presenze</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-black/30" role="progressbar" aria-label="Avanzamento verso la prossima soglia gol" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(scoreProgress)}><div className="h-full rounded-full bg-[#ffe85e] transition-[width] duration-500" style={{ width: `${scoreProgress}%` }} /></div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[8px] font-medium text-white/40"><span>Media voto {expectedAverageRating.toFixed(2)}</span><span>Punteggio atteso {expectedTeamScore.toFixed(1)} pt</span>{defenseModifier && <span>Mod. difesa {currentModifierBonus.toFixed(1)}</span>}</div></section>
           {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[9px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[10px] text-white/55">Media 3 migliori difensori + portiere: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[8px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[10px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}

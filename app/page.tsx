@@ -15,6 +15,8 @@ import {
   LockKeyhole,
   Settings2,
   ShieldCheck,
+  Sun,
+  Moon,
   Sparkles,
   Target,
   TriangleAlert,
@@ -26,6 +28,7 @@ import { createWorker } from "tesseract.js"
 type Position = "P" | "D" | "C" | "A"
 type Mode = "Classic" | "Mantra"
 type Page = "home" | "roster" | "formation"
+type Theme = "light" | "dark"
 type Player = {
   id: string
   name: string
@@ -659,13 +662,40 @@ function SettingSwitch({ label, detail, checked, onChange, large = false }: { la
   )
 }
 
-function SettingsPanel({ mode, setMode, defenseModifier, setDefenseModifier, avoidRisk, setAvoidRisk, onClose }: { mode: Mode; setMode: (value: Mode) => void; defenseModifier: boolean; setDefenseModifier: (value: boolean) => void; avoidRisk: boolean; setAvoidRisk: (value: boolean) => void; onClose: () => void }) {
+function ThemeSwitch({ theme, onChange, compact = false }: { theme: Theme; onChange: (value: Theme) => void; compact?: boolean }) {
+  const options: { value: Theme; label: string; icon: typeof Sun }[] = [
+    { value: "light", label: "Chiaro", icon: Sun },
+    { value: "dark", label: "Scuro", icon: Moon },
+  ]
+
+  return (
+    <div aria-label="Tema dell’app" role="group" className={`inline-flex rounded-xl border border-white/10 bg-black/15 p-1 ${compact ? "gap-0.5" : "w-full gap-1"}`}>
+      {options.map(({ value, label, icon: Icon }) => (
+        <button
+          key={value}
+          type="button"
+          aria-pressed={theme === value}
+          onClick={() => onChange(value)}
+          title={`Tema ${label.toLowerCase()}`}
+          aria-label={`Attiva tema ${label.toLowerCase()}`}
+          className={`inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffe85e] ${compact ? "min-w-9 px-2" : "flex-1 px-3"} ${theme === value ? "bg-[#ffe85e] text-[#0a0c1e] shadow-sm" : "text-white/55 hover:bg-white/10 hover:text-white"}`}
+        >
+          <Icon size={15} aria-hidden="true" />
+          {!compact && <span>{label}</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function SettingsPanel({ mode, setMode, theme, onThemeChange, defenseModifier, setDefenseModifier, avoidRisk, setAvoidRisk, onClose }: { mode: Mode; setMode: (value: Mode) => void; theme: Theme; onThemeChange: (value: Theme) => void; defenseModifier: boolean; setDefenseModifier: (value: boolean) => void; avoidRisk: boolean; setAvoidRisk: (value: boolean) => void; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center bg-black/70 p-4 pt-16 backdrop-blur-sm sm:items-center sm:pt-4" onClick={onClose}>
       <section role="dialog" aria-modal="true" aria-labelledby="settings-title" onClick={(event) => event.stopPropagation()} className="w-full max-w-md rounded-[26px] border border-white/10 bg-[#151732] p-5 shadow-2xl sm:p-6">
         <div className="mb-5 flex items-center justify-between"><div><p className="text-[13px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua lega</p><h2 id="settings-title" className="mt-1 text-xl font-black">Impostazioni</h2></div><button type="button" onClick={onClose} aria-label="Chiudi impostazioni" className="rounded-xl border border-white/10 p-2 text-white/55 hover:bg-white/10"><X size={17} /></button></div>
         <div className="flex flex-col gap-3">
           <div><p className="mb-2 text-[13px] font-bold uppercase tracking-widest text-white/45">Modalità di gioco</p><div className="grid grid-cols-2 gap-2">{(["Classic", "Mantra"] as Mode[]).map((option) => <button key={option} type="button" aria-pressed={mode === option} onClick={() => setMode(option)} className={`rounded-xl border px-4 py-3 text-sm font-black transition ${mode === option ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e]" : "border-white/10 bg-white/[0.03] text-white/65 hover:text-white"}`}>{option.toUpperCase()}</button>)}</div></div>
+          <ThemeSwitch theme={theme} onChange={onThemeChange} />
           <SettingSwitch label="Modificatore difesa" detail="Media migliori 3 difensori + portiere: 6–6,49 = +1; 6,5–6,99 = +2; da 7 = +3." checked={defenseModifier} onChange={setDefenseModifier} />
           <SettingSwitch label="Evita titolarità sotto 60%" detail="Usa un fallback solo se necessario" checked={avoidRisk} onChange={setAvoidRisk} />
         </div>
@@ -677,6 +707,7 @@ function SettingsPanel({ mode, setMode, defenseModifier, setDefenseModifier, avo
 
 export default function Home() {
   const [page, setPage] = useState<Page>("home")
+  const [theme, setTheme] = useState<Theme>("dark")
   const [introEntered, setIntroEntered] = useState(false)
   const [squad, setSquad] = useState<Player[]>([])
   const [mode, setMode] = useState<Mode>("Classic")
@@ -702,7 +733,8 @@ export default function Home() {
       const legacy = !saved ? localStorage.getItem(LEGACY_STORAGE_KEY) : null
       const storedValue = saved ?? legacy
       if (storedValue) {
-        const value = JSON.parse(storedValue) as { mode?: Mode; defenseModifier?: boolean; avoidRisk?: boolean; teamName?: string; players?: unknown[] }
+        const value = JSON.parse(storedValue) as { mode?: Mode; theme?: Theme; defenseModifier?: boolean; avoidRisk?: boolean; teamName?: string; players?: unknown[] }
+        if (value.theme === "light" || value.theme === "dark") setTheme(value.theme)
         if (value.mode === "Classic" || value.mode === "Mantra") setMode(value.mode)
         if (typeof value.defenseModifier === "boolean") setDefenseModifier(value.defenseModifier)
         if (typeof value.avoidRisk === "boolean") setAvoidRisk(value.avoidRisk)
@@ -728,11 +760,17 @@ export default function Home() {
   useEffect(() => {
     if (!hydrated) return
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, defenseModifier, avoidRisk, teamName, players: squad, page }))
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ mode, theme, defenseModifier, avoidRisk, teamName, players: squad, page }))
     } catch {
       // Storage can be unavailable in private browsing; the current session remains usable.
     }
-  }, [hydrated, mode, defenseModifier, avoidRisk, teamName, squad, page])
+  }, [hydrated, mode, theme, defenseModifier, avoidRisk, teamName, squad, page])
+
+  useEffect(() => {
+    if (!hydrated) return
+    document.documentElement.dataset.theme = theme
+    document.documentElement.style.colorScheme = theme
+  }, [hydrated, theme])
 
   const formations = mode === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS
   const formationAdvice = useMemo(() => ({
@@ -903,9 +941,12 @@ export default function Home() {
       </div>
       <div className="relative z-10">
       {page === "home" && <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col overflow-x-hidden px-4 pb-3 sm:px-8 sm:pb-5">
-<header className="flex shrink-0 items-start justify-between border-b border-white/[0.07] py-4 sm:py-5">
+        <header className="flex shrink-0 items-start justify-between border-b border-white/[0.07] py-4 sm:py-5">
       <div className="flex min-w-0 items-start"><FantaVibesLogo large /><div className="-mt-0.5 ml-1 origin-top-left -rotate-[7deg] whitespace-nowrap text-right text-[8px] font-bold uppercase italic leading-[1.2] tracking-[0.1em] text-white/55"><p>powered by the original</p><p className="mt-1 text-[#ffe85e]/80">chaltrons league</p></div></div>
-          <button type="button" aria-label="Apri impostazioni" onClick={() => setSettingsOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 transition hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={18} /></button>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeSwitch theme={theme} onChange={setTheme} compact />
+            <button type="button" aria-label="Apri impostazioni" onClick={() => setSettingsOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 transition hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={18} /></button>
+          </div>
         </header>
         <div className="mx-auto flex w-full max-w-2xl flex-col justify-start gap-2.5 py-2 sm:min-h-0 sm:flex-1 sm:justify-center sm:gap-3.5 sm:py-4">
           <section className="flex shrink-0 items-center gap-3 rounded-[22px] border border-white/[0.09] bg-[#151732] px-4 py-3 sm:gap-4 sm:px-6 sm:py-4">
@@ -922,11 +963,11 @@ export default function Home() {
           {scanNotice && <p role="status" className="text-center text-[12px] leading-4 text-amber-100/80">{scanNotice}</p>}
           <p className="text-center text-[12px] text-white/25">Le tue preferenze vengono salvate automaticamente su questo dispositivo.</p>
         </div>
-        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} theme={theme} onThemeChange={setTheme} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
       </div>}
 
       {page === "roster" && <div className="min-h-[100svh] px-4 pb-28 sm:px-8 sm:pb-32">
-        <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-white/55 hover:text-white sm:text-sm"><ArrowLeft size={16} /> HOME</button><FantaVibesLogo /><span className="hidden rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[13px] font-black tracking-[0.14em] text-[#ffe85e] sm:inline-flex">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[13px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[12px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[13px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
+        <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-white/55 hover:text-white sm:text-sm"><ArrowLeft size={16} /> HOME</button><FantaVibesLogo /><span className="hidden rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[13px] font-black tracking-[0.14em] text-[#ffe85e] sm:inline-flex">{mode.toUpperCase()}</span><ThemeSwitch theme={theme} onChange={setTheme} compact /><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[13px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[12px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[13px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[13px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[12px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[12px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[13px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[12px] leading-4 text-white/55">Recupera presenze, statistiche stagionali e voti delle ultime tre partite disputate: il trend influenza i titolari consigliati.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[13px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[13px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNA STATISTICHE…" : "AGGIORNA STATISTICHE"}</button></div>
@@ -938,7 +979,7 @@ export default function Home() {
       </div>}
 
       {page === "formation" && <div className="min-h-[100svh] px-3 pb-8 sm:px-8">
-        <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 border-b border-white/[0.07] py-3 sm:py-4"><button type="button" onClick={() => setPage("roster")} className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-bold text-white/55 hover:text-white sm:text-sm"><ArrowLeft size={15} /> ROSA <span className="hidden sm:inline">· {squad.length}</span></button><FantaVibesLogo /><div className="min-w-0 px-2 text-center"><h1 className="truncate text-sm font-black sm:text-lg">{teamName.trim() || "La tua squadra"}</h1><p className="text-[12px] font-bold uppercase tracking-widest text-[#ffe85e]">{mode} · {currentFormation.name}</p></div><button type="button" aria-label="Apri impostazioni formazione" onClick={() => setSettingsOpen(true)} className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={17} /></button></header>
+        <header className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 border-b border-white/[0.07] py-3 sm:py-4"><button type="button" onClick={() => setPage("roster")} className="inline-flex shrink-0 items-center gap-1.5 text-[12px] font-bold text-white/55 hover:text-white sm:text-sm"><ArrowLeft size={15} /> ROSA <span className="hidden sm:inline">· {squad.length}</span></button><FantaVibesLogo /><div className="min-w-0 px-2 text-center"><h1 className="truncate text-sm font-black sm:text-lg">{teamName.trim() || "La tua squadra"}</h1><p className="text-[12px] font-bold uppercase tracking-widest text-[#ffe85e]">{mode} · {currentFormation.name}</p></div><ThemeSwitch theme={theme} onChange={setTheme} compact /><button type="button" aria-label="Apri impostazioni formazione" onClick={() => setSettingsOpen(true)} className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={17} /></button></header>
         <div className="mx-auto max-w-6xl pt-3 sm:pt-5"><div className="mb-2 flex items-center justify-between gap-2"><p className="text-[13px] font-black uppercase tracking-[0.17em] text-white/50">Scegli modulo <span className="text-[#ffe85e]">· {mode}</span></p><span className="shrink-0 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-2.5 py-1 text-[12px] font-black tracking-wider text-[#ffe85e]">{mode.toUpperCase()}</span></div>
           <nav aria-label={`Moduli ${mode}`} className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">{formations.map((formation, index) => <button key={formation.name} type="button" aria-pressed={index === formationIndex} onClick={() => setFormationIndex(index)} className={`relative shrink-0 rounded-2xl border px-5 py-3 text-sm font-black tracking-wide transition ${index === formationIndex ? "border-[#ffe85e] bg-[#ffe85e] text-[#0a0c1e] shadow-[0_5px_22px_rgba(255,232,94,0.13)]" : "border-white/15 bg-[#151732] text-white/70 hover:border-[#ffe85e]/40 hover:text-white"}`}><span>{formation.name}</span>{index === recommendedIndex && <span className={`ml-2 rounded-full px-1.5 py-0.5 align-middle text-[13px] font-black tracking-wider ${index === formationIndex ? "bg-[#0a0c1e]/10 text-[#0a0c1e]" : "bg-[#ffe85e]/15 text-[#ffe85e]"}`}>CONSIGLIATO</span>}</button>)}</nav>
           <section aria-label="Confronto strategia modificatore" className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#ffe85e]/15 bg-[#ffe85e]/[0.045] px-3.5 py-3"><div className="flex min-w-0 items-start gap-2.5"><ShieldCheck size={17} className="mt-0.5 shrink-0 text-[#ffe85e]" /><div><p className="text-[12px] font-black uppercase tracking-wider text-white">{defenseModifier ? "Miglior modulo con modificatore" : "Miglior modulo senza modificatore"}: <span className="text-[#ffe85e]">{formations[recommendedIndex]?.name}</span></p><p className="mt-1 text-[13px] leading-4 text-white/50">Probabilità di presenza inclusa nella valutazione. {modifierChangesPlan ? `Senza modificatore conviene ${formations[formationAdvice.withoutModifier.index]?.name}; con il modificatore ${formations[formationAdvice.withModifier.index]?.name}.` : `Il modulo migliore resta ${formations[recommendedIndex]?.name} in entrambi gli scenari.`}</p></div></div><div className="shrink-0 rounded-xl border border-white/[0.08] bg-[#151732] px-3 py-2 text-right"><p className="text-[12px] font-bold uppercase tracking-wider text-white/40">Vantaggio mod atteso</p><p className={`text-sm font-black ${modifierGain > 0.01 ? "text-sky-200" : "text-white/55"}`}>{modifierGain > 0.01 ? `+${modifierGain.toFixed(2)} pt` : "non conviene"}</p></div></section>
@@ -956,7 +997,7 @@ export default function Home() {
           {defenseModifier && <section aria-label="Modificatore difesa" className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-300/20 bg-sky-400/[0.08] px-4 py-3"><div className="flex items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-300/10 text-sky-200"><ShieldCheck size={18} /></span><div><p className="text-[13px] font-black uppercase tracking-widest text-sky-100">Modificatore difesa · ON</p><p className="mt-1 text-[12px] text-white/55">Media 3 migliori difensori + portiere: <strong className="text-white">{defenders.length ? defenderAverage.toFixed(2) : "—"}</strong></p></div></div><div className="shrink-0 text-right"><p className="text-[12px] font-bold uppercase tracking-widest text-white/40">Bonus · atteso</p><p className="text-xl font-black text-sky-200">+{defenseBonus} <span className="text-[12px] text-sky-100/55">({currentModifierBonus.toFixed(2)})</span></p></div></section>}
           <p className="mt-3 text-center text-[13px] text-white/35">Formazione calcolata soltanto sui {squad.length} giocatori riconosciuti nella tua rosa. Le statistiche sono illustrative.</p>
         </div>
-        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
+        {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} theme={theme} onThemeChange={setTheme} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
       </div>}
       </div>
       {selectedPlayer && <PlayerModal player={selectedPlayer} lineup={lineup} mode={mode} onClose={() => setSelectedPlayer(null)} />}

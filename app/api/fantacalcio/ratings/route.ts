@@ -20,6 +20,19 @@ type OfficialRating = {
   redCards?: number
 }
 
+type RecentMatchRating = {
+  matchday: number
+  rating: number
+  fantasyRating?: number
+  goals?: number
+  assists?: number
+}
+
+type OfficialMatchRating = RecentMatchRating & {
+  name: string
+  team: string
+}
+
 const TEAM_CODES: Record<string, string> = {
   atalanta: "ATA",
   bergamo: "ATA",
@@ -119,6 +132,42 @@ function parseOfficialRatings(html: string): OfficialRating[] {
   return ratings
 }
 
+function parseMatchdayRatings(html: string, matchday: number): OfficialMatchRating[] {
+  const ratings: OfficialMatchRating[] = []
+
+  for (const [, row] of html.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const playerLink = row.match(/<a\b[^>]*class="[^"]*player-name[^\"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i)
+    if (!playerLink) continue
+
+    const teamSlug = playerLink[1].match(/\/squadre\/([^/]+)\//i)?.[1]
+    const team = teamSlug ? getTeamCode(teamSlug) : undefined
+    const name = decodeHtml(playerLink[2].replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim()
+    const ratingValues = [...row.matchAll(/<span\b[^>]*class="[^"]*player-grade[^\"]*"[^>]*data-value="([^"]+)"[^>]*>/gi)]
+      .map(([, value]) => parseNumber(value))
+      .filter((value): value is number => value !== undefined)
+    const fantasyRatingValues = [...row.matchAll(/<span\b[^>]*class="[^"]*player-fanta-grade[^\"]*"[^>]*data-value="([^"]+)"[^>]*>/gi)]
+      .map(([, value]) => parseNumber(value))
+      .filter((value): value is number => value !== undefined)
+    const rating = ratingValues[0]
+
+    if (!name || !team || rating === undefined) continue
+
+    const goals = parseInteger(row.match(/<span\b[^>]*class="[^"]*player-bonus[^\"]*"[^>]*data-value="([^"]+)"[^>]*title="Gol segnati"/i)?.[1] ?? "")
+    const assists = parseInteger(row.match(/<span\b[^>]*class="[^"]*player-bonus[^\"]*"[^>]*data-value="([^"]+)"[^>]*title="Assist"/i)?.[1] ?? "")
+    ratings.push({
+      name,
+      team,
+      matchday,
+      rating,
+      ...(fantasyRatingValues[0] !== undefined ? { fantasyRating: fantasyRatingValues[0] } : {}),
+      ...(goals !== undefined ? { goals } : {}),
+      ...(assists !== undefined ? { assists } : {}),
+    })
+  }
+
+  return ratings
+}
+
 function extractColumn(row: string, key: string) {
   const cellPattern = new RegExp(
     `<(?:td|th)\\b[^>]*\\bdata-col-key="${key}"[^>]*>([\\s\\S]*?)<\\/(?:td|th)>`,
@@ -195,7 +244,67 @@ export async function POST(request: Request) {
       return Response.json({ error: "Il formato delle statistiche di Fantacalcio.it è cambiato." }, { status: 502 })
     }
 
+    const recentMatchRatings = await (async () => {
+      try {
+        const latestRoundResponse = await fetch(`https://www.fantacalcio.it/voti-fantacalcio-serie-a/${season}`, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; FantacalcioRatingLookup/1.0)" },
+          next: { revalidate: 900 },
+          signal: AbortSignal.timeout(12_000),
+        })
+        if (!latestRoundResponse.ok) return [] as OfficialMatchRating[]
+
+        const latestRoundHtml = await latestRoundResponse.text()
+        const latestMatchday = Number(latestRoundHtml.match(/<title[^>]*>[^<]*?(\d{1,2})\s*(?:ª\s*)?giornata/i)?.[1])
+        if (!Number.isInteger(latestMatchday) || latestMatchday < 1 || latestMatchday > 38) return [] as OfficialMatchRating[]
+
+        const ratings = parseMatchdayRatings(latestRoundHtml, latestMatchday)
+        const targets = players.flatMap((player) => {
+          const candidates = officialRatings.filter((rating) => normalize(rating.name) === normalize(player.name))
+          const teamCode = getTeamCode(player.team)
+          const matched = teamCode
+            ? candidates.find((candidate) => candidate.team === teamCode) ?? (candidates.length === 1 ? candidates[0] : undefined)
+            : candidates.length === 1 ? candidates[0] : undefined
+          return matched?.appearances
+            ? [{ name: normalize(player.name), team: matched.team, appearances: Math.min(3, matched.appearances) }]
+            : []
+        })
+        const hasRecentAppearances = () => targets.every((target) =>
+          new Set(ratings
+            .filter((rating) => normalize(rating.name) === target.name && rating.team === target.team)
+            .map((rating) => rating.matchday)).size >= target.appearances,
+        )
+
+        for (let firstMatchday = latestMatchday - 1; firstMatchday >= Math.max(1, latestMatchday - 11) && !hasRecentAppearances(); firstMatchday -= 3) {
+          const matchdays = [firstMatchday, firstMatchday - 1, firstMatchday - 2].filter((matchday) => matchday >= 1)
+          const previousRounds = await Promise.all(matchdays.map(async (matchday) => {
+            try {
+              const roundResponse = await fetch(`https://www.fantacalcio.it/voti-fantacalcio-serie-a/${season}/${matchday}`, {
+                headers: { "User-Agent": "Mozilla/5.0 (compatible; FantacalcioRatingLookup/1.0)" },
+                next: { revalidate: 900 },
+                signal: AbortSignal.timeout(8_000),
+              })
+              return roundResponse.ok ? parseMatchdayRatings(await roundResponse.text(), matchday) : []
+            } catch {
+              return []
+            }
+          }))
+          ratings.push(...previousRounds.flat())
+        }
+
+        return ratings
+      } catch {
+        return [] as OfficialMatchRating[]
+      }
+    })()
+
     const ratingsByName = new Map<string, OfficialRating[]>()
+    const recentRatingsByName = new Map<string, OfficialMatchRating[]>()
+    for (const rating of recentMatchRatings) {
+      const key = normalize(rating.name)
+      const candidates = recentRatingsByName.get(key) ?? []
+      candidates.push(rating)
+      recentRatingsByName.set(key, candidates)
+    }
     for (const rating of officialRatings) {
       const key = normalize(rating.name)
       const candidates = ratingsByName.get(key) ?? []
@@ -214,7 +323,12 @@ export async function POST(request: Request) {
 
       if (!matched) return []
       const { name: _name, team: _team, ...stats } = matched
-      return [{ id: player.id, stats }]
+      const recentCandidates = (recentRatingsByName.get(normalize(player.name)) ?? [])
+        .filter((candidate) => candidate.team === teamCode)
+        .sort((a, b) => b.matchday - a.matchday)
+        .slice(0, 3)
+        .map(({ name: _recentName, team: _recentTeam, ...recentMatch }) => recentMatch)
+      return [{ id: player.id, stats, recentMatches: recentCandidates }]
     })
 
     return Response.json({ season, sourceUrl, ratings })

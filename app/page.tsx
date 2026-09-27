@@ -39,6 +39,7 @@ type Player = {
   mvSeason?: string
   officialStats?: OfficialStats
   statsSeason?: string
+  recentMatches?: RecentMatchRating[]
   inj: boolean
   suspended?: boolean
   reason: string
@@ -56,6 +57,13 @@ type OfficialStats = {
   assists?: number
   yellowCards?: number
   redCards?: number
+}
+type RecentMatchRating = {
+  matchday: number
+  rating: number
+  fantasyRating?: number
+  goals?: number
+  assists?: number
 }
 type Formation = { name: string; defense: number; midfield: number; attack: number }
 type Lineup = Record<Position, Player[]>
@@ -128,8 +136,19 @@ function getAvailability(player: Player) {
   return player.titolarita / 100
 }
 
+function getRecentFormAverage(player: Player) {
+  const recentRatings = (player.recentMatches ?? []).slice(0, 3).map((match) => match.rating)
+  return recentRatings.length
+    ? recentRatings.reduce((total, rating) => total + rating, 0) / recentRatings.length
+    : undefined
+}
+
 function getExpectedPlayerValue(player: Player) {
-  return player.mv * getAvailability(player)
+  const recentFormAverage = getRecentFormAverage(player)
+  const formAdjustedRating = recentFormAverage === undefined
+    ? player.mv
+    : player.mv * 0.5 + recentFormAverage * 0.5
+  return formAdjustedRating * getAvailability(player)
 }
 
 function canPlay(player: Player, position: Position, mode: Mode) {
@@ -403,6 +422,7 @@ function isStoredPlayer(value: unknown): value is Player {
     && (player.mvSeason === undefined || typeof player.mvSeason === "string")
     && (player.officialStats === undefined || (typeof player.officialStats === "object" && player.officialStats !== null && Object.values(player.officialStats).every((stat) => stat === undefined || (typeof stat === "number" && Number.isFinite(stat)))))
     && (player.statsSeason === undefined || typeof player.statsSeason === "string")
+    && (player.recentMatches === undefined || (Array.isArray(player.recentMatches) && player.recentMatches.length <= 3 && player.recentMatches.every((match) => typeof match === "object" && match !== null && Number.isInteger(match.matchday) && match.matchday >= 1 && match.matchday <= 38 && typeof match.rating === "number" && Number.isFinite(match.rating) && match.rating >= 0 && match.rating <= 10 && (match.fantasyRating === undefined || (typeof match.fantasyRating === "number" && Number.isFinite(match.fantasyRating))) && (match.goals === undefined || (typeof match.goals === "number" && Number.isFinite(match.goals))) && (match.assists === undefined || (typeof match.assists === "number" && Number.isFinite(match.assists))))))
     && (player.suspended === undefined || typeof player.suspended === "boolean")
     && typeof player.reason === "string" && typeof player.opponent === "string"
 }
@@ -495,34 +515,73 @@ function PlayerAvatar({ player, className }: { player: Player; className: string
   )
 }
 
-function getPlayerLineupReason(player: Player) {
-  const unavailableReason = /statistiche non disponibili|non sono state trovate|nessun dato|nessuna informazione|motivazione non disponibile/i.test(player.reason.trim())
-  if (!unavailableReason && player.reason.trim()) return player.reason
-
+function getPlayerLineupReasons(player: Player, isRecommendedStarter: boolean, strongerAlternative?: Player) {
+  const reasons: string[] = []
+  const recentMatches = player.recentMatches ?? []
+  const recentAverage = getRecentFormAverage(player)
   const roleReason: Record<Position, string> = {
     P: "Tra i pali può puntare a una prestazione utile per il voto e a mantenere la porta inviolata.",
     D: "In difesa può offrire una base per il voto e cercare un bonus sulle palle inattive.",
     C: "A centrocampo può contribuire al voto e trovare spazio per inserimenti o assist.",
     A: "In attacco può trasformare tiri e occasioni in un bonus utile alla squadra.",
   }
-  const minutesNote = player.titolarita >= 80
-    ? `La titolarità stimata è alta (${player.titolarita}%), quindi può essere una scelta affidabile per questa giornata.`
-    : player.titolarita >= 60
-      ? `La titolarità stimata è del ${player.titolarita}%: può valere lo schieramento, tenendo conto del rischio minutaggio.`
-      : `La titolarità stimata è del ${player.titolarita}%: è una possibile scommessa, da valutare in base alle alternative.`
-  const stats = player.officialStats
-  const seasonNotes = stats?.appearances !== undefined
-    ? ` In stagione ha raccolto ${stats.appearances} ${stats.appearances === 1 ? "presenza" : "presenze"}${stats.mv !== undefined ? ` e una media voto di ${stats.mv.toFixed(2)}` : ""}${stats.goals ? `, con ${stats.goals} ${stats.goals === 1 ? "gol" : "gol"}` : ""}${stats.assists ? ` e ${stats.assists} ${stats.assists === 1 ? "assist" : "assist"}` : ""}.`
-    : ""
-  const matchupNote = player.opponent && player.opponent !== "—" ? ` La sfida è contro ${player.opponent}.` : ""
-  const availabilityNote = isUnavailable(player) ? " Verifica la disponibilità prima di confermarlo in formazione." : ""
+  const unavailableReason = /statistiche non disponibili|non sono state trovate|nessun dato|nessuna informazione|motivazione non disponibile/i.test(player.reason.trim())
 
-  return `${roleReason[player.position]} ${minutesNote}${seasonNotes}${matchupNote}${availabilityNote}`
+  if (!isRecommendedStarter) {
+    if (player.inj) reasons.push("Non consigliato titolare: risulta infortunato; verifica le ultime notizie prima di inserirlo.")
+    if (player.suspended) reasons.push("Non consigliato titolare: risulta squalificato per la prossima gara.")
+    if (!isUnavailable(player) && player.titolarita < 60) reasons.push(`La titolarità stimata è solo del ${player.titolarita}%: il rischio di pochi minuti o di non prendere voto è elevato.`)
+    else if (!isUnavailable(player) && player.titolarita < 80) reasons.push(`La titolarità stimata è del ${player.titolarita}%: il minutaggio è meno sicuro rispetto a un titolare fisso.`)
+    if (!isUnavailable(player) && recentAverage !== undefined && recentAverage < 6) {
+      reasons.push(`Nelle ultime ${recentMatches.length} ${recentMatches.length === 1 ? "partita ha" : "partite ha"} una media voto di ${recentAverage.toFixed(2)}: la forma recente non offre una garanzia sufficiente.`)
+    }
+    if (strongerAlternative) {
+      reasons.push(`Nel modulo scelto il posto è assegnato a ${strongerAlternative.name}: la sua valutazione attesa, che considera media stagionale, ultime tre partite e titolarità, è superiore (${getExpectedPlayerValue(strongerAlternative).toFixed(2)} contro ${getExpectedPlayerValue(player).toFixed(2)}).`)
+    }
+    if (!reasons.length) reasons.push("La panchina dipende dai posti disponibili nel modulo scelto: gli altri titolari hanno un profilo complessivo più adatto per questa formazione.")
+    if (recentAverage !== undefined && recentAverage >= 6) {
+      reasons.push(`La forma resta positiva: media ${recentAverage.toFixed(2)} nelle ultime ${recentMatches.length} ${recentMatches.length === 1 ? "partita" : "partite"}; può essere una prima alternativa dalla panchina.`)
+    }
+    return reasons
+  }
+
+  reasons.push(!unavailableReason && player.reason.trim() ? player.reason : roleReason[player.position])
+  reasons.push(player.titolarita >= 80
+    ? `Titolarità stimata alta (${player.titolarita}%): aumenta la probabilità di minutaggio e di voto. `
+    : player.titolarita >= 60
+      ? `Titolarità stimata al ${player.titolarita}%: il potenziale giustifica la scelta, con un po’ di rischio sul minutaggio. `
+      : `Titolarità stimata al ${player.titolarita}%: è una scommessa, consigliata solo se le alternative sono limitate.`)
+
+  if (recentAverage !== undefined) {
+    const recentDetail = recentMatches.map((match) => `G${match.matchday} ${match.rating.toFixed(1)}`).join(" · ")
+    const trend = recentAverage >= player.mv + 0.2
+      ? "in crescita rispetto alla media stagionale"
+      : recentAverage <= player.mv - 0.2
+        ? "in calo rispetto alla media stagionale"
+        : "in linea con la media stagionale"
+    reasons.push(`Forma recente: ${recentDetail} · media ${recentAverage.toFixed(2)}, ${trend}. I voti delle ultime tre partite pesano per metà nel consiglio di formazione.`)
+  }
+
+  const stats = player.officialStats
+  if (stats?.appearances !== undefined) {
+    reasons.push(`In stagione ha raccolto ${stats.appearances} ${stats.appearances === 1 ? "presenza" : "presenze"}${stats.mv !== undefined ? ` con media voto ${stats.mv.toFixed(2)}` : ""}${stats.goals ? ` e ${stats.goals} ${stats.goals === 1 ? "gol" : "gol"}` : ""}${stats.assists ? ` più ${stats.assists} ${stats.assists === 1 ? "assist" : "assist"}` : ""}.`)
+  }
+  if (player.opponent && player.opponent !== "—") reasons.push(`Prossimo avversario: ${player.opponent}.`)
+  if (isUnavailable(player)) reasons.push("Attenzione: la disponibilità va verificata prima di confermarlo in formazione.")
+  return reasons
 }
 
-function PlayerModal({ player, onClose }: { player: Player; onClose: () => void }) {
+function PlayerModal({ player, onClose, lineup, mode }: { player: Player; onClose: () => void; lineup: Lineup; mode: Mode }) {
+  const isRecommendedStarter = Object.values(lineup).flat().some((starter) => starter.id === player.id)
   const isRisk = player.titolarita < 60 || isUnavailable(player)
-  const lineupReason = getPlayerLineupReason(player)
+  const strongerAlternative = !isRecommendedStarter
+    ? (Object.keys(lineup) as Position[])
+      .filter((position) => canPlay(player, position, mode))
+      .flatMap((position) => lineup[position])
+      .filter((starter) => getExpectedPlayerValue(starter) > getExpectedPlayerValue(player))
+      .sort((a, b) => getExpectedPlayerValue(b) - getExpectedPlayerValue(a))[0]
+    : undefined
+  const lineupReasons = getPlayerLineupReasons(player, isRecommendedStarter, strongerAlternative)
   const officialStats = player.officialStats
   const officialStatItems: Array<[string, number | string | undefined]> = [
     ["Presenze", officialStats?.appearances],
@@ -560,9 +619,16 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
             {officialStats ? <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{officialStatItems.map(([label, value]) => <div key={label} className="rounded-xl border border-white/[0.06] bg-black/15 p-2.5"><div className="text-[12px] leading-4 text-white/45">{label}</div><div className="mt-1 text-base font-black text-white">{typeof value === "number" ? value.toLocaleString("it-IT", { minimumFractionDigits: Number.isInteger(value) ? 0 : 1, maximumFractionDigits: 2 }) : value ?? "—"}</div></div>)}</div> : <p className="text-[13px] leading-5 text-white/45">Nessun dato caricato. Torna alla rosa e aggiorna le statistiche.</p>}
             <a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="mt-3 inline-block text-[12px] font-bold text-violet-100/60 underline underline-offset-2 hover:text-violet-100">Fonte: Fantacalcio.it</a>
           </section>
-          <div className="mt-4 rounded-2xl border border-[#ffe85e]/10 bg-[#ffe85e]/[0.045] p-4">
-            <div className="flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest text-[#ffe85e]"><Sparkles size={14} />Perché schierarlo</div>
-            <p className="mt-2 text-sm leading-6 text-white/75">{lineupReason}</p>
+          <section className="mt-4 rounded-2xl border border-sky-200/15 bg-sky-200/[0.04] p-4" aria-label="Voti delle ultime tre partite">
+            <div className="mb-3 flex items-center justify-between gap-2"><h3 className="text-[12px] font-bold uppercase tracking-widest text-sky-100">Ultime tre partite</h3><span className="text-[12px] text-white/40">Voti Fantacalcio.it</span></div>
+            {player.recentMatches?.length ? <div className="grid grid-cols-3 gap-2">{player.recentMatches.map((match) => <div key={match.matchday} className="rounded-xl border border-white/[0.06] bg-black/15 p-2.5"><div className="text-[12px] text-white/45">Giornata {match.matchday}</div><div className="mt-1 text-lg font-black text-white">{match.rating.toFixed(1)}<span className="ml-1 text-[12px] font-medium text-white/45">voto</span></div>{match.fantasyRating !== undefined && <div className="text-[12px] text-sky-100/65">Fantavoto {match.fantasyRating.toFixed(1)}</div>}{Boolean(match.goals) && <div className="mt-1 text-[12px] font-bold text-emerald-200">{match.goals} gol</div>}{Boolean(match.assists) && <div className="text-[12px] font-bold text-emerald-200">{match.assists} assist</div>}</div>)}</div> : <p className="text-[13px] leading-5 text-white/45">Aggiorna le statistiche per caricare i voti delle ultime partite disputate.</p>}
+          </section>
+          <div className={`mt-4 rounded-2xl border p-4 ${isRecommendedStarter ? "border-[#ffe85e]/10 bg-[#ffe85e]/[0.045]" : "border-amber-200/15 bg-amber-200/[0.04]"}`}>
+            <div className={`flex items-center gap-2 text-[12px] font-bold uppercase tracking-widest ${isRecommendedStarter ? "text-[#ffe85e]" : "text-amber-100"}`}>
+              {isRecommendedStarter ? <Sparkles size={14} /> : <TriangleAlert size={14} />}
+              {isRecommendedStarter ? "Perché consigliamo di schierarlo" : "Perché lo lasciamo in panchina"}
+            </div>
+            <ul className="mt-3 space-y-2">{lineupReasons.map((reason) => <li key={reason} className="flex items-start gap-2 text-sm leading-5 text-white/75"><span aria-hidden="true" className={`mt-1 shrink-0 ${isRecommendedStarter ? "text-emerald-200" : "text-amber-200"}`}>{isRecommendedStarter ? <Check size={14} /> : <ChevronRight size={14} />}</span><span>{reason}</span></li>)}</ul>
           </div>
           <p className="mt-3 text-[12px] leading-5 text-white/35">Hype, titolarità, avversario e consiglio sono stime; i dati nella sezione viola sono quelli pubblicati da Fantacalcio.it.</p>
           <button type="button" onClick={onClose} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#ffe85e] px-4 py-3 text-sm font-black text-[#0a0c1e] hover:bg-yellow-200">CHIUDI <Check size={16} /></button>
@@ -784,7 +850,7 @@ export default function Home() {
       const result = await response.json() as {
         error?: string
         season?: string
-        ratings?: Array<{ id: string; stats: OfficialStats }>
+        ratings?: Array<{ id: string; stats: OfficialStats; recentMatches?: RecentMatchRating[] }>
       }
 
       if (!response.ok || !result.season || !Array.isArray(result.ratings)) {
@@ -805,14 +871,16 @@ export default function Home() {
         return {
           ...player,
           officialStats: rating.stats,
+          recentMatches: rating.recentMatches ?? player.recentMatches,
           statsSeason: result.season,
           ...(hasOfficialRating ? { mv: rating.stats.mv!, mvSource: "fantacalcio" as const, mvSeason: result.season } : {}),
         }
       }))
 
       const matchedCount = result.ratings.length
+      const recentFormPlayers = result.ratings.filter((rating) => rating.recentMatches?.length).length
       const missingRatings = squad.length - matchedCount
-      setRatingNotice(`${matchedCount} ${matchedCount === 1 ? "giocatore aggiornato" : "giocatori aggiornati"} con statistiche ufficiali${missingRatings ? ` · ${missingRatings} ${missingRatings === 1 ? "non trovato" : "non trovati"} nelle statistiche della stagione` : ""} · stagione ${result.season}.`)
+      setRatingNotice(`${matchedCount} ${matchedCount === 1 ? "giocatore aggiornato" : "giocatori aggiornati"} con statistiche ufficiali · andamento ultime tre partite disponibile per ${recentFormPlayers} ${recentFormPlayers === 1 ? "giocatore" : "giocatori"}${missingRatings ? ` · ${missingRatings} ${missingRatings === 1 ? "non trovato" : "non trovati"} nelle statistiche della stagione` : ""} · stagione ${result.season}.`)
     } catch {
       setRatingNotice("Recupero non riuscito. Riprova tra poco: la rosa non è stata modificata.")
     } finally {
@@ -861,7 +929,7 @@ export default function Home() {
         <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-2 border-b border-white/[0.07] py-3.5 sm:py-5"><button type="button" onClick={goHome} className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-white/55 hover:text-white sm:text-sm"><ArrowLeft size={16} /> HOME</button><FantaVibesLogo /><span className="hidden rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.08] px-3 py-1.5 text-[13px] font-black tracking-[0.14em] text-[#ffe85e] sm:inline-flex">{mode.toUpperCase()}</span><button type="button" onClick={() => uploadRef.current?.click()} disabled={scanning} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#151732] px-2.5 py-2 text-[13px] font-bold text-white/65 hover:text-white"><Users size={13} />CAMBIA ROSA</button><button type="button" onClick={() => rosterFileRef.current?.click()} disabled={scanning || importingRoster} className="inline-flex items-center gap-1.5 rounded-lg border border-[#ffe85e]/25 bg-[#151732] px-2 py-2 text-[12px] font-black text-[#ffe85e] hover:bg-[#ffe85e]/10 disabled:opacity-50 sm:px-2.5 sm:text-[13px]">{importingRoster ? <LoaderCircle size={13} className="animate-spin" /> : <FileSpreadsheet size={13} />}XLSX / CSV</button><input ref={uploadRef} id="roster-image" type="file" accept="image/png,image/jpeg,image/webp" onChange={handleUpload} className="sr-only" aria-label="Carica un altro screenshot" disabled={scanning || importingRoster} /><input ref={rosterFileRef} id="roster-file" type="file" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={handleRosterFileUpload} className="sr-only" aria-label="Importa rosa da file XLSX o CSV" disabled={scanning || importingRoster} /></header>
         <section className="mx-auto max-w-5xl pt-5 sm:pt-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-1 text-[13px] font-black uppercase tracking-[0.2em] text-[#ffe85e]">La tua rosa</p><h1 className="text-3xl font-black tracking-tight sm:text-5xl">{teamName.trim() || "La tua squadra"}</h1></div><div className="flex items-baseline gap-2 rounded-2xl border border-white/10 bg-[#151732] px-4 py-2.5"><span className="text-2xl font-black text-[#ffe85e]">{squad.length}</span><span className="text-[12px] font-bold uppercase tracking-widest text-white/50">giocatori trovati</span></div></div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2"><span className="inline-flex items-center gap-2 rounded-full border border-[#ffe85e]/25 bg-[#ffe85e]/[0.1] px-3.5 py-2 text-[12px] font-black tracking-[0.14em] text-[#ffe85e]">{mode.toUpperCase()} <span className="size-1 rounded-full bg-[#ffe85e]" />MOD {defenseModifier ? "ON" : "OFF"}</span><span className="text-[13px] text-white/40">Mostrati esclusivamente i giocatori riconosciuti</span></div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[12px] leading-4 text-white/55">Recupera presenze, voti, gol, assist e bonus/malus di tutta la rosa.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[13px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[13px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNA STATISTICHE…" : "AGGIORNA STATISTICHE"}</button></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-300/15 bg-violet-300/[0.045] px-3.5 py-3"><p className="text-[12px] leading-4 text-white/55">Recupera presenze, statistiche stagionali e voti delle ultime tre partite disputate: il trend influenza i titolari consigliati.</p><a href="https://www.fantacalcio.it/statistiche-serie-a" target="_blank" rel="noreferrer" className="text-[13px] font-bold text-white/45 underline decoration-white/20 underline-offset-2 hover:text-white/75">Fonte Fantacalcio.it</a><button type="button" onClick={refreshOfficialRatings} disabled={!squad.length || syncingRatings} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-violet-200/25 bg-violet-200/[0.1] px-3 py-2 text-[13px] font-black text-violet-100 transition hover:bg-violet-200/[0.18] disabled:cursor-not-allowed disabled:opacity-45">{syncingRatings ? <LoaderCircle size={13} className="animate-spin" /> : <Sparkles size={13} />} {syncingRatings ? "AGGIORNA STATISTICHE…" : "AGGIORNA STATISTICHE"}</button></div>
           {ratingNotice && <p role="status" className="mt-3 rounded-xl border border-violet-300/15 bg-violet-300/[0.05] px-4 py-3 text-[12px] leading-5 text-violet-100/80">{ratingNotice}</p>}
           {scanNotice && <p role="status" className={`mt-4 rounded-xl border px-4 py-3 text-sm leading-5 ${squad.length ? "border-emerald-300/15 bg-emerald-300/[0.05] text-emerald-100/80" : "border-amber-300/20 bg-amber-300/[0.05] text-amber-100/80"}`}>{scanNotice}</p>}
           {squad.length ? <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">{squad.map((player) => <button key={player.id} type="button" onClick={() => setSelectedPlayer(player)} aria-label={`Apri valutazione di ${player.name}`} className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[0.08] bg-[#151732] p-3.5 text-left transition hover:border-[#ffe85e]/35 hover:bg-[#1b1e3b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ffe85e] sm:p-4"><PlayerAvatar player={player} className="size-14 rounded-xl text-base" /><div className="min-w-0 flex-1"><div className="flex items-baseline justify-between gap-2"><h2 className="truncate text-base font-black">{player.name}</h2><span className="truncate text-[13px] text-white/45">{player.team}</span></div><p className="mt-1 truncate text-[13px] text-white/45"><span className={`mr-1 rounded border px-1 py-0.5 text-[12px] font-black ${POSITION_COLORS[player.position]}`}>{player.position}</span>Mantra {player.mantraRoles.join(" / ")}</p><div className="mt-2 flex items-center justify-between"><span className={`rounded-lg border px-2 py-1 text-[13px] font-black ${getTitolaritaStyle(player.titolarita)}`}>{player.titolarita}% titolarità</span><span title={player.mvSource === "fantacalcio" ? `Media voto ufficiale Fantacalcio.it · ${player.mvSeason}` : "Media voto stimata, non ancora sincronizzata"} className={`text-[13px] font-bold ${player.mvSource === "fantacalcio" ? "text-violet-200" : "text-white/45"}`}>{player.mvSource === "fantacalcio" ? "MV FC" : "MV stima"} {player.mv.toFixed(2)}</span></div></div></button>)}</div> : <div className="mt-5 flex min-h-48 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-[#151732]/70 px-5 text-center"><div className="flex size-12 items-center justify-center rounded-2xl bg-white/[0.05] text-white/35"><Users size={22} /></div><h2 className="mt-3 text-lg font-black">Rosa vuota</h2><p className="mt-1 max-w-sm text-sm leading-5 text-white/45">Non è stato riconosciuto nessun giocatore nel file caricato. Non aggiungiamo elementi dal database: carica uno screenshot più nitido per riprovare.</p><button type="button" onClick={() => uploadRef.current?.click()} className="mt-4 rounded-xl bg-white px-4 py-2.5 text-sm font-black text-[#0a0c1e]">RIPROVA OCR</button></div>}
@@ -891,7 +959,7 @@ export default function Home() {
         {settingsOpen && <SettingsPanel mode={mode} setMode={(value) => { const options = value === "Classic" ? CLASSIC_FORMATIONS : MANTRA_FORMATIONS; setMode(value); setFormationIndex(recommendFormation(squad, options, value, avoidRisk, defenseModifier).index) }} defenseModifier={defenseModifier} setDefenseModifier={(value) => { setDefenseModifier(value); setFormationIndex(value ? formationAdvice.withModifier.index : formationAdvice.withoutModifier.index) }} avoidRisk={avoidRisk} setAvoidRisk={(value) => { setAvoidRisk(value); setFormationIndex(recommendFormation(squad, formations, mode, value, defenseModifier).index) }} onClose={() => setSettingsOpen(false)} />}
       </div>}
       </div>
-      {selectedPlayer && <PlayerModal player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />}
+      {selectedPlayer && <PlayerModal player={selectedPlayer} lineup={lineup} mode={mode} onClose={() => setSelectedPlayer(null)} />}
     </main>
   )
 }

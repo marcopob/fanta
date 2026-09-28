@@ -494,7 +494,7 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
           <div className="intro-logo-reveal flex flex-col items-center text-center">
             <h1 className="sr-only">Fanta Vibes</h1>
             <div aria-hidden="true"><FantaVibesLogo large /></div>
-            <p className="-mt-1 text-xs font-semibold tracking-[0.24em] text-white/75">IL FANTACALCIO, CON PIÙ VIBES</p>
+            <p className="-mt-1 text-xs font-semibold tracking-[0.24em] text-white/75">NON ANDARE IN OVERTHINKING!</p>
             <button type="button" onClick={onEnter} className="mt-7 inline-flex min-h-12 min-w-40 items-center justify-center gap-3 rounded-full border border-white/30 bg-[#ffe85e] px-8 py-3 text-base font-black tracking-[0.18em] text-[#082453] shadow-[0_10px_38px_rgba(255,232,94,0.32)] transition hover:-translate-y-0.5 hover:bg-white focus-visible:outline focus-visible:outline-4 focus-visible:outline-offset-4 focus-visible:outline-white">
               ENTRA <ArrowRight size={20} strokeWidth={2.5} />
             </button>

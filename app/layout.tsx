@@ -5,6 +5,7 @@ import './globals.css'
 export const metadata: Metadata = {
   title: 'Fanta Vibes',
   description: 'Fanta Vibes: la tua esperienza di fantacalcio, formazione e statistiche.',
+    manifest: '/manifest.json',
   generator: 'v0.app',
   icons: {
     icon: [

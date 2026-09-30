@@ -398,7 +398,7 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
   })
 }
 
-function matchRosterFromOcr(text: string): Player[] {
+function matchRosterFromOcrFix(text: string): Player[] {
   const clean = (s: string) => s.toLowerCase().replace(/[^a-zà-ù']/g, "").trim()
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
   const found: Player[] = []

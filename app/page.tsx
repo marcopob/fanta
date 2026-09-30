@@ -398,31 +398,51 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
     else reader.readAsArrayBuffer(file)
   })
 }
+
 function matchRosterFromOcr(text: string): Player[] {
-  const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 3)
   return lines.map((line, i) => {
-    const parts = line.split(/\s+/)
+    // prova a pulire riga tipo "Lautaro Martinez INT A 45"
+    const clean = line.replace(/[^a-zA-Zàèéìòù\s]/g, " ").trim()
+    if (clean.length < 4) return null
+    const parts = clean.split(/\s+/).filter(Boolean)
     return {
       id: `ocr-${i}-${Date.now()}`,
-      name: parts.slice(0, 2).join(" ") || line,
+      name: parts.slice(0, 2).join(" ") || clean,
       team: "",
       role: "A",
       price: 1,
     } as unknown as Player
-  }).filter(p => p.name.length > 2)
+  }).filter(Boolean).filter(p => p!.name.length > 2) as Player[]
 }
-async function importRosterFile(file: File): Promise<Player[]> {
-  const extension = file.name.toLowerCase().split(".").pop()
 
-  // --- NUOVO: supporto immagini con OCR ---
-  if (["png", "jpg", "jpeg", "webp", "bmp"].includes(extension || "")) {
-    const worker = await createWorker("ita+eng")
-    const { data: { text } } = await worker.recognize(file)
-    await worker.terminate()
-    if (!text?.trim()) throw new Error("OCR non ha letto nulla dall'immagine")
-    return matchRosterFromOcr(text)
+async function importRosterFile(file: File): Promise<Player[]> {
+  const extension = file.name.toLowerCase().split(".").pop() || ""
+
+  // IMMAGINI -> OCR
+  if (["png","jpg","jpeg","webp","bmp"].includes(extension)) {
+    try {
+      const { createWorker } = await import('tesseract.js')
+      const worker = await createWorker()
+      await (worker as any).loadLanguage?.('ita+eng')
+      await (worker as any).initialize?.('ita+eng')
+      const ret = await (worker as any).recognize(file)
+      const text = ret.data?.text || ""
+      await (worker as any).terminate()
+      console.log("OCR text:", text)
+      if (!text.trim()) return []
+      return matchRosterFromOcr(text)
+    } catch (e) {
+      console.error("OCR error", e)
+      alert("Errore OCR: " + e)
+      return []
+    }
   }
 
+  // TESTO / CSV
+  const text = await file.text()
+  return matchRosterFromOcr(text)
+}
   let workbook
   if (extension === "csv") {
     const csv = await readBrowserFile(file, "text") as string

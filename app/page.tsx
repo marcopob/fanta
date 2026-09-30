@@ -418,8 +418,6 @@ function matchRosterFromOcr(text: string): Player[] {
   }
   return found
 }
-  return players
-}
 
 async function importRosterFile(file: File): Promise<Player[]> {
   const extension = file.name.toLowerCase().split(".").pop() || ""

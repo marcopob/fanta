@@ -398,7 +398,19 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
     else reader.readAsArrayBuffer(file)
   })
 }
-
+function matchRosterFromOcr(text: string): Player[] {
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
+  return lines.map((line, i) => {
+    const parts = line.split(/\s+/)
+    return {
+      id: `ocr-${i}-${Date.now()}`,
+      name: parts.slice(0, 2).join(" ") || line,
+      team: "",
+      role: "A",
+      price: 1,
+    } as unknown as Player
+  }).filter(p => p.name.length > 2)
+}
 async function importRosterFile(file: File): Promise<Player[]> {
   const extension = file.name.toLowerCase().split(".").pop()
 

@@ -1,6 +1,6 @@
 // fix ocr
 "use client"
-
+import { playersData } from "@/lib/playersData"
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent, CSSProperties } from "react"
 import Image from "next/image"

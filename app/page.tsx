@@ -399,27 +399,24 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
 }
 
 function matchRosterFromOcr(text: string): Player[] {
-  const bad = ["rosa","crediti","calendario","cialtronis","fanta vibes","infermeria","portieri","difensori","centrocampisti","attaccanti","allenatore"]
-  const found = new Map<string, string>()
-  text.split("\n").forEach(raw => {
-    let line = raw.replace(/[^A-Za-zÀ-ÿ' .\-]/g, " ").replace(/\s+/g, " ").trim()
-    if (line.length < 3) return
-    if (bad.some(b => line.toLowerCase().includes(b))) return
-    // prende le prime 1-3 parole con iniziale maiuscola
-    const words = line.split(" ").filter(w => w.length >= 2 && /^[A-Za-zÀ-ÿ]/.test(w))
-    if (words.length === 0 || words.length > 4) return
-    let name = words.slice(0, 3).join(" ").trim()
-    if (name.length < 3 || name.length > 30) return
-    const key = name.toLowerCase()
-    if (!found.has(key)) found.set(key, name)
-  })
-  return Array.from(found.values()).map((name, i) => ({
-    id: `ocr-${i}-${Date.now()}`,
-    name,
-    team: "",
-    role: "A",
-    price: 1,
-  } as unknown as Player))
+  const clean = (s: string) => s.toLowerCase().replace(/[^a-zà-ù']/g, "").trim()
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
+  const found: Player[] = []
+  const seen = new Set<string>()
+
+  for (const line of lines) {
+    const lineClean = clean(line)
+    if (lineClean.length < 3) continue
+    const match = (playersData as any[]).find((p: any) => {
+      const nameClean = clean(p.name || "")
+      return lineClean.includes(nameClean) || nameClean.includes(lineClean)
+    })
+    if (match && !seen.has(match.name)) {
+      seen.add(match.name)
+      found.push(match as Player)
+    }
+  }
+  return found
 }
   return players
 }

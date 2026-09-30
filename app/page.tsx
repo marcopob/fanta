@@ -403,18 +403,16 @@ function matchRosterFromOcr(text: string): Player[] {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean)
   const found: Player[] = []
   const seen = new Set<string>()
-
   for (const line of lines) {
     const lineClean = clean(line)
     if (lineClean.length < 3) continue
-    const match = (playersData as any[]).find((p: any) => {
-      const nameClean = clean(p.name || "")
-      return lineClean.includes(nameClean) || nameClean.includes(lineClean)
-    })
-    if (match && !seen.has(match.name)) {
-      seen.add(match.name)
-      found.push(match as Player)
-    }
+    found.push({
+      id: lineClean,
+      name: line,
+      team: "?",
+      role: "A",
+      price: 1
+    } as Player)
   }
   return found
 }
@@ -443,9 +441,11 @@ async function importRosterFile(file: File): Promise<Player[]> {
   }
 
   // TESTO / CSV
-  const text = await file.text()
-  return matchRosterFromOcr(text)
-}
+  if (["txt","csv"].includes(extension)) {
+    const text = await file.text()
+    return matchRosterFromOcr(text)
+  }
+
   let workbook
   if (extension === "csv") {
     const csv = await readBrowserFile(file, "text") as string

@@ -24,7 +24,6 @@ import {
   Users,
   X,
 } from "lucide-react"
-import { createWorker } from "tesseract.js"
 
 type Position = "P" | "D" | "C" | "A"
 type Mode = "Classic" | "Mantra"

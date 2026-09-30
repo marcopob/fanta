@@ -398,21 +398,24 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
   })
 }
 
-function matchRosterFromOcr(text: string): Player[] {
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 3)
-  return lines.map((line, i) => {
-    // prova a pulire riga tipo "Lautaro Martinez INT A 45"
-    const clean = line.replace(/[^a-zA-Zàèéìòù\s]/g, " ").trim()
-    if (clean.length < 4) return null
-    const parts = clean.split(/\s+/).filter(Boolean)
-    return {
-      id: `ocr-${i}-${Date.now()}`,
-      name: parts.slice(0, 2).join(" ") || clean,
-      team: "",
-      role: "A",
-      price: 1,
-    } as unknown as Player
-  }).filter(Boolean).filter(p => p!.name.length > 2) as Player[]
+function matchRosterFromOcr(text: string): any[] {
+  const blacklist = ["Rosa","Calendario","Infermeria","Cialtronis","Dettaglio","Crediti","Calciatore","Salsa Lovers","Nedo Sonetti"]
+  const lines = text.split("\n").map(l=>l.trim()).filter(l=>l.length>2)
+  const players: any[] = []
+  for (const raw of lines) {
+    if (blacklist.some(b => raw.toLowerCase().includes(b.toLowerCase()))) continue
+    // toglie numeri e lascia solo lettere
+    let clean = raw.replace(/[^A-Za-zÀ-ù'’.\s]/g, " ").replace(/\s+/g," ").trim()
+    // prende solo parole che sembrano nome: iniziale maiuscola, >=3 lettere
+    const words = clean.split(" ").filter(w => w.length>=3 && /^[A-ZÀ-Ù][a-zà-ù'.]+$/.test(w) || /^[A-ZÀ-Ù]+$/.test(w))
+    if (words.length === 0) continue
+    // unisce tipo "Di Lorenzo" o "Martinez Jo"
+    let name = words.slice(0,2).join(" ").replace(/\.$/,"").trim()
+    if (name.length < 3 || name.length > 25) continue
+    if (players.some(p=>p.name.toLowerCase()===name.toLowerCase())) continue
+    players.push({ id: `ocr-${players.length}`, name, team: "", role: "A", price: 1 })
+  }
+  return players
 }
 
 async function importRosterFile(file: File): Promise<Player[]> {

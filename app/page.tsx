@@ -398,23 +398,29 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
   })
 }
 
-function matchRosterFromOcr(text: string): any[] {
-  const blacklist = ["Rosa","Calendario","Infermeria","Cialtronis","Dettaglio","Crediti","Calciatore","Salsa Lovers","Nedo Sonetti"]
-  const lines = text.split("\n").map(l=>l.trim()).filter(l=>l.length>2)
-  const players: any[] = []
-  for (const raw of lines) {
-    if (blacklist.some(b => raw.toLowerCase().includes(b.toLowerCase()))) continue
-    // toglie numeri e lascia solo lettere
-    let clean = raw.replace(/[^A-Za-zÀ-ù'’.\s]/g, " ").replace(/\s+/g," ").trim()
-    // prende solo parole che sembrano nome: iniziale maiuscola, >=3 lettere
-    const words = clean.split(" ").filter(w => w.length>=3 && /^[A-ZÀ-Ù][a-zà-ù'.]+$/.test(w) || /^[A-ZÀ-Ù]+$/.test(w))
-    if (words.length === 0) continue
-    // unisce tipo "Di Lorenzo" o "Martinez Jo"
-    let name = words.slice(0,2).join(" ").replace(/\.$/,"").trim()
-    if (name.length < 3 || name.length > 25) continue
-    if (players.some(p=>p.name.toLowerCase()===name.toLowerCase())) continue
-    players.push({ id: `ocr-${players.length}`, name, team: "", role: "A", price: 1 })
-  }
+function matchRosterFromOcr(text: string): Player[] {
+  const bad = ["rosa","crediti","calendario","cialtronis","fanta vibes","infermeria","portieri","difensori","centrocampisti","attaccanti","allenatore"]
+  const found = new Map<string, string>()
+  text.split("\n").forEach(raw => {
+    let line = raw.replace(/[^A-Za-zÀ-ÿ' .\-]/g, " ").replace(/\s+/g, " ").trim()
+    if (line.length < 3) return
+    if (bad.some(b => line.toLowerCase().includes(b))) return
+    // prende le prime 1-3 parole con iniziale maiuscola
+    const words = line.split(" ").filter(w => w.length >= 2 && /^[A-Za-zÀ-ÿ]/.test(w))
+    if (words.length === 0 || words.length > 4) return
+    let name = words.slice(0, 3).join(" ").trim()
+    if (name.length < 3 || name.length > 30) return
+    const key = name.toLowerCase()
+    if (!found.has(key)) found.set(key, name)
+  })
+  return Array.from(found.values()).map((name, i) => ({
+    id: `ocr-${i}-${Date.now()}`,
+    name,
+    team: "",
+    role: "A",
+    price: 1,
+  } as unknown as Player))
+}
   return players
 }
 

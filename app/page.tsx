@@ -401,21 +401,30 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
 
 async function importRosterFile(file: File): Promise<Player[]> {
   const extension = file.name.toLowerCase().split(".").pop()
+
+  // --- NUOVO: supporto immagini con OCR ---
+  if (["png", "jpg", "jpeg", "webp", "bmp"].includes(extension || "")) {
+    const worker = await createWorker("ita+eng")
+    const { data: { text } } = await worker.recognize(file)
+    await worker.terminate()
+    if (!text?.trim()) throw new Error("OCR non ha letto nulla dall'immagine")
+    return matchRosterFromOcr(text)
+  }
+
   let workbook
   if (extension === "csv") {
-    const csv = await readBrowserFile(file, "text")
+    const csv = await readBrowserFile(file, "text") as string
     workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) })
   } else {
-    const fileBytes = await readBrowserFile(file, "arrayBuffer")
+    const fileBytes = await readBrowserFile(file, "arrayBuffer") as ArrayBuffer
     workbook = readWorkbook(fileBytes, { type: "array" })
   }
   const players = workbook.SheetNames.flatMap((sheetName) => {
     const sheet = workbook.Sheets[sheetName]
-    return sheet ? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: false })) : []
+    return sheet? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })) : []
   })
   return [...new Map(players.map((player) => [player.id, player])).values()]
 }
-
 function isStoredPlayer(value: unknown): value is Player {
   if (!value || typeof value !== "object") return false
   const player = value as Partial<Player>

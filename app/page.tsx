@@ -169,7 +169,11 @@ function evaluateFormation(squad: Player[], formation: Formation, index: number,
   const filledSlots = players.length
   return { index, lineup, playerValue, modifierBonus, score: playerValue + modifierBonus, filledSlots }
 }
-function recommendFormation(squad: Player
+function recommendFormation(squad: Player[], formations: Formation[], mode: Mode, avoidRisk: boolean, considerModifier: boolean) {
+  const options = formations.map((formation, index) => evaluateFormation(squad, formation, index, mode, avoidRisk, considerModifier))
+  return options.sort((a, b) => b.score - a.score || b.filledSlots - a.filledSlots || b.playerValue - a.playerValue)[0]
+}
+
 const NAME_HEADERS = new Set(["giocatore", "calciatore", "nome", "nominativo", "nomegiocatore", "nomecalciatore", "player", "playername", "atleta"])
 const TEAM_HEADERS = new Set(["squadra", "teamsquadra", "club", "clubsquadra", "squadraappartenenza"])
 const ROLE_HEADERS = new Set(["ruolo", "ruoliclassic", "ruolomantra", "ruoli", "posizione", "r", "mantra"])

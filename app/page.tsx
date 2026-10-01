@@ -173,7 +173,17 @@ function recommendFormation(squad: Player[], formations: Formation[], mode: Mode
   const options = formations.map((formation, index) => evaluateFormation(squad, formation, index, mode, avoidRisk, considerModifier))
   return options.sort((a, b) => b.score - a.score || b.filledSlots - a.filledSlots || b.playerValue - a.playerValue)[0]
 }
-
+function recommendBench(squad: Player[], starters: Player[], mode: Mode, avoidRisk: boolean) {
+  const starterIds = new Set(starters.map((player) => player.id))
+  return squad
+   .filter((player) =>!starterIds.has(player.id))
+   .map((player) => {
+      const possiblePositions = (["P","D","C","A"] as Position[]).filter((position) => canPlay(player, position, mode))
+      const bestPosition = possiblePositions[0]?? "C" as Position
+      return { player, position: bestPosition, flexible: possiblePositions.length > 1, expectedValue: getExpectedPlayerValue(player) }
+    })
+   .sort((a,b) => b.expectedValue - a.expectedValue)
+}
 const NAME_HEADERS = new Set(["giocatore", "calciatore", "nome", "nominativo", "nomegiocatore", "nomecalciatore", "player", "playername", "atleta"])
 const TEAM_HEADERS = new Set(["squadra", "teamsquadra", "club", "clubsquadra", "squadraappartenenza"])
 const ROLE_HEADERS = new Set(["ruolo", "ruoliclassic", "ruolomantra", "ruoli", "posizione", "r", "mantra"])

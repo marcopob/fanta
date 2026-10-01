@@ -887,26 +887,6 @@ function parseRosterRows(rows: unknown[][]) {
   console.log("Giocatori importati:", players.length, players.map(p=>p.name))
   return players
 }
-
-    if (!nome || nome.length < 3) continue
-    const key = nome.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-
-    // Cerca nei 599 che hai appena incollato
-    const found = PLAYER_DB.find(p =>
-      p.name.toLowerCase() === key ||
-      p.name.toLowerCase().replace(/\./g, "") === key.replace(/\./g, "")
-    )
-
-    if (found) {
-      players.push(found)
-    } else {
-      players.push(createImportedPlayer(nome, squadra, ruolo))
-    }
-  }
-  return players
-}
 function getCsvDelimiter(text: string) {
   const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""
   const counts = [";", ",", "\t"].map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))

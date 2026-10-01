@@ -249,7 +249,6 @@ function parseRosterRows(rows: unknown[][]) {
   }
   return players
 }
-}
 function getCsvDelimiter(text: string) {
   const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""
   const counts = [";", ",", "\t"].map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))

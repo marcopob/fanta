@@ -1,5 +1,5 @@
 "use client"
-// playersData imported from local DB
+// playersData fallback to local DB
 const importedPlayersData: Player[] = []
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { ChangeEvent, CSSProperties } from "react"
@@ -125,347 +125,149 @@ const POSITION_COLORS: Record<Position, string> = {
 function normalizeName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "")
 }
-function isUnavailable(player: Player) {
-  return player.inj || player.suspended === true
-}
-function getAvailability(player: Player) {
-  if (isUnavailable(player)) return 0
-  return player.titolarita / 100
-}
-function getRecentFormAverage(player: Player) {
-  const recentRatings = (player.recentMatches ?? []).slice(0, 3).map((match) => match.rating)
-  return recentRatings.length
-    ? recentRatings.reduce((total, rating) => total + rating, 0) / recentRatings.length
-    : undefined
-}
-function getExpectedPlayerValue(player: Player) {
-  const recentFormAverage = getRecentFormAverage(player)
-  const formAdjustedRating = recentFormAverage === undefined
-    ? player.mv
-    : player.mv * 0.5 + recentFormAverage * 0.5
-  return formAdjustedRating * getAvailability(player)
-}
-function canPlay(player: Player, position: Position, mode: Mode) {
-  if (mode === "Classic") return player.position === position
-  const roles = player.mantraRoles.map((role) => role.toLowerCase())
-  if (position === "P") return roles.includes("por")
-  if (position === "D") return roles.some((role) => ["dc", "dd", "ds", "e"].includes(role))
-  if (position === "C") return roles.some((role) => ["m", "c", "t", "w", "e"].includes(role))
-  return roles.some((role) => ["pc", "a", "w"].includes(role))
-}
-type FormationAdvice = { index: number; lineup: Lineup; playerValue: number; modifierBonus: number; score: number; filledSlots: number }
-function getModifierAverage(defenders: Player[], goalkeeper: Player[] = []) {
-  if (defenders.length!== 4 || goalkeeper.length!== 1) return null
-  const bestThreeDefenderRatings = defenders.map((player) => player.mv).sort((a, b) => b - a).slice(0, 3)
-  return [...bestThreeDefenderRatings, goalkeeper[0].mv].reduce((total, rating) => total + rating, 0) / 4
-}
-function getModifierBonus(defenders: Player[], goalkeeper: Player[] = []) {
-  const averageMv = getModifierAverage(defenders, goalkeeper)
-  if (averageMv === null) return 0
-  return averageMv >= 7? 3 : averageMv >= 6.5? 2 : averageMv >= 6? 1 : 0
-}
-function getBestLineup(squad: Player[], formation: Formation, mode: Mode, avoidRisk: boolean, considerModifier: boolean): Lineup {
-  const lineup: Lineup = { P: [], D: [], C: [], A: [] }
-  const requested: Record<Position, number> = { P: 1, D: formation.defense, C: formation.midfield, A: formation.attack }
-  const positions = (Object.keys(requested) as Position[]).filter((position) => requested[position] > 0)
-  const availableSquad = squad.filter((player) =>!isUnavailable(player))
-  const candidateCount = Object.fromEntries(positions.map((position) => [position, availableSquad.filter((player) => canPlay(player, position, mode)).length])) as Record<Position, number>
-  positions.sort((a, b) => candidateCount[a] / requested[a] - candidateCount[b] / requested[b])
-  const used = new Set<string>()
-  for (const position of positions) {
-    const candidates = availableSquad.filter((player) =>!used.has(player.id) && canPlay(player, position, mode))
-    const safe = avoidRisk? candidates.filter((player) => player.titolarita >= 60) : candidates
-    const orderedCandidates = (safe.length >= requested[position]? safe : candidates).sort((a, b) => {
-      const aDefenderModifierValue = considerModifier && position === "D"? Math.max(0, a.mv - 6) * getAvailability(a) * 0.08 : 0
-      const bDefenderModifierValue = considerModifier && position === "D"? Math.max(0, b.mv - 6) * getAvailability(b) * 0.08 : 0
-      return getExpectedPlayerValue(b) + bDefenderModifierValue - getExpectedPlayerValue(a) - aDefenderModifierValue
-    })
-    lineup[position] = orderedCandidates.slice(0, requested[position])
-    lineup[position].forEach((player) => used.add(player.id))
-  }
-  return lineup
-}
-function evaluateFormation(squad: Player[], formation: Formation, index: number, mode: Mode, avoidRisk: boolean, considerModifier: boolean): FormationAdvice {
-  const lineup = getBestLineup(squad, formation, mode, avoidRisk, considerModifier)
-  const players = Object.values(lineup).flat()
-  const playerValue = players.reduce((total, player) => total + getExpectedPlayerValue(player), 0)
-  const modifierBonus = considerModifier? getModifierBonus(lineup.D, lineup.P) * [...lineup.D,...lineup.P].reduce((probability, player) => probability * getAvailability(player), 1) : 0
-  const filledSlots = players.length
-  return { index, lineup, playerValue, modifierBonus, score: playerValue + modifierBonus, filledSlots }
-}
-function recommendFormation(squad: Player[], formations: Formation[], mode: Mode, avoidRisk: boolean, considerModifier: boolean) {
-  const options = formations.map((formation, index) => evaluateFormation(squad, formation, index, mode, avoidRisk, considerModifier))
-  return options.sort((a, b) => b.score - a.score || b.filledSlots - a.filledSlots || b.playerValue - a.playerValue)[0]
-}
-type BenchRecommendation = { player: Player; position: Position; flexible: boolean }
-function recommendBench(squad: Player[], starters: Player[], mode: Mode, avoidRisk: boolean): BenchRecommendation[] {
-  const starterIds = new Set(starters.map((player) => player.id))
-  const reserves = squad.filter((player) =>!starterIds.has(player.id))
-  const benchByPosition: Record<Position, Player[]> = { P: [], D: [], C: [], A: [] }
-  const targets: Record<Position, number> = { P: 1, D: 2, C: 2, A: 2 }
-  const positions = (Object.keys(targets) as Position[]).sort((a, b) =>
-    reserves.filter((player) => canPlay(player, a, mode)).length / targets[a] -
-    reserves.filter((player) => canPlay(player, b, mode)).length / targets[b],
-  )
-  const usedIds = new Set<string>()
-  const rankReserve = (a: Player, b: Player) =>
-    Number(isUnavailable(a)) - Number(isUnavailable(b)) ||
-    getExpectedPlayerValue(b) - getExpectedPlayerValue(a) ||
-    b.titolarita - a.titolarita
-  for (const position of positions) {
-    const candidates = reserves.filter((player) =>!usedIds.has(player.id) && canPlay(player, position, mode))
-    const safe = avoidRisk? candidates.filter((player) => player.titolarita >= 60 &&!isUnavailable(player)) : candidates
-    const chosen = (safe.length >= targets[position]? safe : candidates)
-     .sort(rankReserve)
-     .slice(0, targets[position])
-    benchByPosition[position] = chosen
-    chosen.forEach((player) => usedIds.add(player.id))
-  }
-  const bench: BenchRecommendation[] = (Object.keys(targets) as Position[]).flatMap((position) =>
-    benchByPosition[position].map((player) => ({ player, position, flexible: false })),
-  )
-  const remaining = reserves
-   .filter((player) =>!usedIds.has(player.id))
-   .sort(rankReserve)
-  for (const player of remaining) {
-    const position = (['P', 'D', 'C', 'A'] as Position[]).find((candidate) => canPlay(player, candidate, mode))?? player.position
-    bench.push({ player, position, flexible: true })
-  }
-  return bench
-}
-function exactPlayerByName(name: string): Player | undefined {
-  const normalizedName = normalizeName(name)
-  return PLAYER_DB.find((player) => normalizeName(player.name) === normalizedName)
-}
-function matchRosterFromOcr(text: string): Player[] {
-  const matchedIds = new Set<string>()
-  const lines = text.split(/[\n\r|]+/).map((line) => line.replace(/\d+[.,]?\d*/g, " ").replace(/[^\p{L}\s.'-]/gu, " ").trim()).filter(Boolean)
-  const headings = /^(rosa|titolari|panchina|formazione|giocatori|giocatore|portieri|portiere|difensori|centrocampisti|attaccanti|rendimento|quotazione|fantacalcio|punteggio|totale|voti|lega|mercato|svincolati|infortunati)$/i
-  const exactNames = new Map(PLAYER_DB.map((player) => [normalizeName(player.name), player.id]))
-  for (const line of lines) {
-    if (line.length < 3 || headings.test(line)) continue
-    const words = line.split(/\s+/).filter((word) => word.length > 1)
-    const candidates = new Set<string>([line,...words])
-    for (let size = 2; size <= Math.min(4, words.length); size += 1) {
-      for (let start = 0; start <= words.length - size; start += 1) candidates.add(words.slice(start, start + size).join(" "))
-    }
-    for (const candidate of candidates) {
-      const id = exactNames.get(normalizeName(candidate))
-      if (id) matchedIds.add(id)
-    }
-  }
-  return PLAYER_DB.filter((player) => matchedIds.has(player.id))
-}
-const NAME_HEADERS = new Set(["giocatore", "calciatore", "nome", "nominativo", "nomegiocatore", "nomecalciatore", "player", "playername", "atleta"])
-const TEAM_HEADERS = new Set(["squadra", "teamsquadra", "club", "clubsquadra", "squadraappartenenza"])
-const ROLE_HEADERS = new Set(["ruolo", "ruoliclassic", "ruolomantra", "ruoli", "posizione", "r", "mantra"])
-const INJURY_HEADERS = new Set(["infortunio", "infortunata", "infortunato", "infortunatao", "injury", "injured", "indisponibile", "out"])
-const SUSPENSION_HEADERS = new Set(["squalifica", "squalificato", "squalificata", "suspended", "suspension"])
-const STATUS_HEADERS = new Set(["stato", "status", "note", "disponibilita", "disponibilitagiocatore"])
-function parseAvailabilityFlag(value: string | undefined, kind: "injury" | "suspension", explicitField = false) {
-  const normalized = normalizeName(value?? "")
-  if (!normalized) return undefined
-  const unavailablePattern = kind === "injury"? /infortun|injur|indisponibil/ : /squalific|suspend|sospes/
-  if (unavailablePattern.test(normalized) || (kind === "injury" && normalized === "out")) return true
-  if (explicitField && ["si", "yes", "true", "1", "x"].includes(normalized)) return true
-  if (["no", "false", "0", "disponibile", "disponibilita", "regolare"].includes(normalized)) return false
-  return undefined
-}
-function getImportedRole(roleText: string, existing?: Player) {
-  const tokens = roleText.toUpperCase().match(/POR|PC|DC|DD|DS|[PMDCETWA]/g)?? []
-  const mantraRoles = [...new Set(tokens.map((role) => role === "P"? "Por" : role[0] + role.slice(1).toLowerCase()))]
-  const position: Position | undefined = tokens.some((role) => role === "P" || role === "POR")? "P"
-    : tokens.some((role) => ["D", "DC", "DD", "DS"].includes(role))? "D"
-      : tokens.some((role) => ["A", "PC", "W"].includes(role))? "A"
-        : tokens.some((role) => ["M", "C", "T", "E"].includes(role))? "C"
-          : existing?.position
-  return { position: position?? "C", mantraRoles: mantraRoles.length? mantraRoles : existing?.mantraRoles?? [] }
-}
-function createImportedPlayer(name: string, team: string, roleText: string, inj?: boolean, suspended?: boolean): Player {
-  const existing = exactPlayerByName(name)
-  const importedRole = getImportedRole(roleText, existing)
-  if (existing) {
-    return {
-     ...existing,
-      name: name.trim(),
-      team: team || existing.team,
-      position: importedRole.position,
-      mantraRoles: importedRole.mantraRoles,
-      inj: inj?? existing.inj,
-      suspended: suspended?? existing.suspended?? false,
-    }
-  }
-  const id = `import-${normalizeName(name)}`
-  return {
-    id,
-    name: name.trim(),
-    team: team || "SVIN",
-    position: importedRole.position,
-    mantraRoles: importedRole.mantraRoles,
-    titolarita: 60,
-    hype: 60,
-    mv: 6,
-    inj: inj?? false,
-    suspended: suspended?? false,
-    reason: "Giocatore importato manualmente",
-    opponent: "—",
-  }
-}
-function parseRosterRows(rows: unknown[][]): Player[] {
-  const normalizedRows = rows.map((row) => row.map((cell) => `${cell?? ""}`.trim()))
-  if (!normalizedRows.length) return []
-  const players: Player[] = []
-  const addPlayer = (name: string, team: string, role: string, inj?: boolean, suspended?: boolean) => {
-    if (!name.trim()) return
-    const player = createImportedPlayer(name, team, role, inj, suspended)
-    players.push(player)
-  }
-  const headerIndex = normalizedRows.findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
-  if (headerIndex >= 0) {
-    const headers = normalizedRows[headerIndex].map((cell) => normalizeName(cell))
-    const nameIndex = headers.findIndex((h) => NAME_HEADERS.has(h))
-    const firstNameIndex = headers.findIndex((h) => h === "nome")
-    const lastNameIndex = headers.findIndex((h) => h === "cognome")
-    const teamIndex = headers.findIndex((h) => TEAM_HEADERS.has(h))
-    const roleIndexes = headers.map((h, i) => ROLE_HEADERS.has(h)? i : -1).filter((i) => i >= 0)
-    const injuryIndex = headers.findIndex((h) => INJURY_HEADERS.has(h))
-    const suspensionIndex = headers.findIndex((h) => SUSPENSION_HEADERS.has(h))
-    const statusIndexes = headers.map((header, index) => STATUS_HEADERS.has(header)? index : -1).filter((index) => index >= 0)
-    for (const row of normalizedRows.slice(headerIndex + 1)) {
-      const name = firstNameIndex >= 0 && lastNameIndex >= 0? `${row[firstNameIndex]?? ""} ${row[lastNameIndex]?? ""}`.trim() : row[nameIndex]?? ""
-      if (!name) continue
-      const statusText = statusIndexes.map((index) => row[index]?? "").join(" ")
-      const importedInjury = parseAvailabilityFlag(injuryIndex >= 0? row[injuryIndex] : undefined, "injury", injuryIndex >= 0)?? parseAvailabilityFlag(statusText, "injury")
-      const importedSuspension = parseAvailabilityFlag(suspensionIndex >= 0? row[suspensionIndex] : undefined, "suspension", suspensionIndex >= 0)?? parseAvailabilityFlag(statusText, "suspension")
-      addPlayer(name, teamIndex >= 0? row[teamIndex] : "", roleIndexes.map((index) => row[index]?? "").join(" "), importedInjury, importedSuspension)
-    }
-  } else {
-    for (const row of normalizedRows) {
-      for (const cell of row) {
-        const exactMatch = exactPlayerByName(cell)
-        if (exactMatch) addPlayer(exactMatch.name, exactMatch.team, exactMatch.mantraRoles.join(" "))
-      }
-    }
-  }
-  return players
-}
-function getCsvDelimiter(text: string) {
-  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""
-  const counts = [";", ",", "\t"].map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
-  const detected = counts.sort((a, b) => b.count - a.count)[0]
-  return detected.count > 1? detected.delimiter : ","
-}
-function readBrowserFile(file: File, format: "text"): Promise<string>
-function readBrowserFile(file: File, format: "arrayBuffer"): Promise<ArrayBuffer>
-function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<string | ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(reader.error?? new Error("Unable to read selected file"))
-    reader.onabort = () => reject(new Error("File reading was cancelled"))
-    reader.onload = () => {
-      if (format === "text" && typeof reader.result === "string") resolve(reader.result)
-      else if (format === "arrayBuffer" && reader.result instanceof ArrayBuffer) resolve(reader.result)
-      else reject(new Error("Unexpected file format"))
-    }
-    if (format === "text") reader.readAsText(file)
-    else reader.readAsArrayBuffer(file)
-  })
-}
-async function importRosterFile(file: File): Promise<Player[]> {
-  const extension = file.name.toLowerCase().split(".").pop() || ""
-  if (["png","jpg","jpeg","webp","bmp"].includes(extension)) {
-    try {
-      const { createWorker } = await import('tesseract.js')
-      const worker = await createWorker()
-      await (worker as any).loadLanguage?.('ita+eng')
-      await (worker as any).initialize?.('ita+eng')
-      const ret = await (worker as any).recognize(file)
-      const text = ret.data?.text || ""
-      await (worker as any).terminate()
-      if (!text.trim()) return []
-      return matchRosterFromOcr(text)
-    } catch (e) {
-      console.error("OCR error", e)
-      alert("Errore OCR: " + e)
-      return []
-    }
-  }
-  if (["txt","csv"].includes(extension)) {
-    const text = await file.text()
-    return matchRosterFromOcr(text)
-  }
-  let workbook
-  if (extension === "csv") {
-    const csv = await readBrowserFile(file, "text") as string
-    workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) })
-  } else {
-    const fileBytes = await readBrowserFile(file, "arrayBuffer") as ArrayBuffer
-    workbook = readWorkbook(fileBytes, { type: "array" })
-  }
-  const players = workbook.SheetNames.flatMap((sheetName) => {
-    const sheet = workbook.Sheets[sheetName]
-    return sheet? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })) : []
-  })
-  return [...new Map(players.map((player) => [player.id, player])).values()]
-}
-function isStoredPlayer(value: unknown): value is Player {
-  if (!value || typeof value!== "object") return false
-  const player = value as Partial<Player>
-  return typeof player.id === "string" && typeof player.name === "string" && typeof player.team === "string"
-    && ["P", "D", "C", "A"].includes(player.position?? "") && Array.isArray(player.mantraRoles)
-    && typeof player.titolarita === "number" && typeof player.hype === "number"
+undefined || (typeof match.assists === "number" && Number.isFinite(match.assists))))))
+    && (player.suspended === undefined || typeof player.suspended === "boolean")
+    && typeof player.reason === "string" && typeof player.opponent === "string"
 }
 function getTitolaritaStyle(value: number) {
-  if (value >= 85) return "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
-  if (value >= 65) return "border-amber-200/25 bg-amber-200/10 text-amber-100"
-  return "border-rose-300/25 bg-rose-300/10 text-rose-100"
+  if (value >= 80) return "border-emerald-300/30 bg-emerald-300/15 text-emerald-100"
+  if (value >= 60) return "border-amber-200/30 bg-amber-200/15 text-amber-100"
+  return "border-rose-300/30 bg-rose-300/15 text-rose-100"
 }
-
-// --- QUI SOTTO VA TUTTA LA TUA UI ORIGINALE CHE AVEVI NEL PDF (Home, SettingsPanel, PlayerModal, ecc) ---
-// Per non superare il limite di WhatsApp te l'ho lasciata identica a quella che avevi,
-// l'importante è che ora sopra hai 1 solo matchRosterFromOcr e 3 readBrowserFile (2 overload + impl) che sono validi.
-
-// Se vuoi, dopo il commit verde ti ricostruisco io la UI completa pezzo per pezzo,
-// ma per far diventare Vercel verde ti basta che il file finisca con il tuo export default Page che avevi.
-
-// INCOLLA QUI SOTTO IL RESTO DEL TUO FILE ORIGINALE DAL PUNTO DOVE INIZIA:
-// function FantaVibesLogo() {... } fino alla fine
-// che hai già nel PDF dopo isStoredPlayer.
-
-// Per farti fare il deploy ORA, ti do un Page minimale che compila e poi aggiungiamo UI:
-
-export default function Page() {
-  const [squad, setSquad] = useState<Player[]>([])
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [notice, setNotice] = useState("")
-  const handleFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    const players = await importRosterFile(f)
-    if (players.length) {
-      setSquad(players)
-      setNotice(`Caricati ${players.length} giocatori`)
-    } else {
-      setNotice("Nessun giocatore riconosciuto")
-    }
-  }
+function FantaVibesLogo({ large = false }: { large?: boolean }) {
   return (
-    <main className="min-h-screen bg-[#0a0c1e] text-white p-6">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-black flex items-center gap-2"><Sparkles/> Fanta Vibes - Fix Deploy</h1>
-        <p className="opacity-60 mt-2 text-sm">File corretto, nessun doppione matchRosterFromOcr. Vercel ora diventa verde.</p>
-        <button onClick={() => fileRef.current?.click()} className="mt-6 px-4 py-2 bg-[#ffe85e] text-black rounded-xl font-black flex items-center gap-2"><FileSpreadsheet size={16}/> Importa Rosa</button>
-        <input ref={fileRef} type="file" accept=".txt,.csv,.xlsx,.xls,.png,.jpg,.jpeg" onChange={handleFile} className="hidden" />
-        {notice && <p className="mt-4 text-sm bg-white/10 p-3 rounded-xl">{notice}</p>}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-2">
-          {squad.map(p => (
-            <div key={p.id} className="border border-white/10 rounded-xl p-3 bg-[#151732]">
-              <div className="font-bold">{p.name} <span className="opacity-50 text-xs">{p.team}</span></div>
-              <div className="text-xs opacity-60">{p.position} - MV {p.mv} - {p.titolarita}%</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </main>
+    <span role="img" aria-label="Fanta Vibes" className={`relative block shrink-0 select-none ${large ? "h-[76px] w-[184px]" : "h-[52px] w-[126px]"}`}>
+      <span className={`absolute left-1 top-0 -rotate-[8deg] font-black italic leading-none tracking-[-0.09em] text-[#ffe85e] ${large ? "text-[36px]" : "text-[25px]"}`}>FANTA</span>
+      <span aria-hidden="true" className={`absolute left-1 -rotate-[8deg] bg-gradient-to-r from-[#ffe85e]/25 via-[#ffe85e] to-[#ffe85e]/30 ${large ? "top-[34px] h-[3px] w-[164px]" : "top-[24px] h-[2px] w-[112px]"}`} />
+      <span className={`absolute -rotate-[8deg] font-black italic leading-none tracking-[-0.07em] text-white ${large ? "left-[45px] top-[43px] text-[31px]" : "left-[31px] top-[29px] text-[22px]"}`}>VIBES</span>
+    </span>
   )
 }
+    }
+    setScanning(true)
+    setProgress(0)
+    setScanNotice("")
+    try {
+      const worker = await createWorker("ita", 1, {
+        logger: (message) => {
+          if (message.status === "recognizing text") setProgress(Math.round(message.progress * 100))
+        },
+      })
+      try {
+        const { data } = await worker.recognize(file)
+        const found = matchRosterFromOcr(data.text)
+        setSquad(found)
+        setPage("roster")
+        setScanNotice(found.length
+         ? `${found.length} ${found.length === 1? "giocatore riconosciuto" : "giocatori riconosciuti"}. Mostriamo solo i nomi trovati nella tua rosa.`
+          : "Nessun giocatore riconosciuto. La rosa resta vuota: prova con uno screenshot più nitido.")
+      } finally {
+        await worker.terminate()
+      }
+    } catch {
+      setSquad([])
+      setPage("roster")
+      setScanNotice("Scansione non riuscita. La rosa resta vuota: controlla la connessione e riprova.")
+    } finally {
+      setScanning(false)
+      if (uploadRef.current) uploadRef.current.value = ""
+    }
+  }
+  async function handleRosterFileUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    const supportedFile = /\.(xlsx|csv)$/i.test(file.name)
+    if (!supportedFile) {
+      setScanNotice("Scegli un file.xlsx o.csv esportato dalla tua lega Fantacalcio.")
+      event.target.value = ""
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setScanNotice("Il file supera il limite di 15 MB. Esporta una rosa più leggera e riprova.")
+      event.target.value = ""
+      return
+    }
+    setImportingRoster(true)
+    setScanNotice("")
+    try {
+      const importedPlayers = await importRosterFile(file)
+      setSquad(importedPlayers)
+      setPage("roster")
+      setScanNotice(importedPlayers.length
+       ? `${importedPlayers.length} ${importedPlayers.length === 1? "giocatore importato" : "giocatori importati"} dal file. Le colonne Infortunato/Squalificato escludono gli indisponibili dalla formazione consigliata.`
+        : "Nessun giocatore trovato nel file. Verifica che contenga una colonna Giocatore o Nome e riprova.")
+    } catch {
+      setSquad([])
+      setPage("roster")
+      setScanNotice("Impossibile leggere il file. Esporta nuovamente la rosa in formato.xlsx o.csv e riprova.")
+    } finally {
+      setImportingRoster(false)
+      if (rosterFileRef.current) rosterFileRef.current.value = ""
+    }
+  }
+  async function refreshOfficialRatings() {
+    if (!squad.length || syncingRatings) return
+    setSyncingRatings(true)
+    setRatingNotice("")
+    try {
+      const response = await fetch("/api/fantacalcio/ratings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ players: squad.map(({ id, name, team }) => ({ id, name, team })) }),
+      })
+      const result = await response.json() as {
+        error?: string
+        season?: string
+        ratings?: Array<{ id: string; stats: OfficialStats; recentMatches?: RecentMatchRating[] }>
+      }
+      if (!response.ok ||!result.season ||!Array.isArray(result.ratings)) {
+        throw new Error(result.error || "Risposta non valida")
+      }
+      const officialRatings = new Map(
+        result.ratings
+         .filter((rating) => typeof rating.id === "string")
+         .map((rating) => [rating.id, rating]),
+      )
+      setSquad((currentSquad) => currentSquad.map((player) => {
+        const rating = officialRatings.get(player.id)
+        if (!rating) return player
+        const hasOfficialRating = Number.isFinite(rating.stats.mv) && (rating.stats.appearances?? 0) > 0
+        return {
+         ...player,
+          officialStats: rating.stats,
+          recentMatches: rating.recentMatches?? player.recentMatches,
+          statsSeason: result.season,
+         ...(hasOfficialRating? { mv: rating.stats.mv!, mvSource: "fantacalcio" as const, mvSeason: result.season } : {}),
+        }
+      }))
+      const matchedCount = result.ratings.length
+      const recentFormPlayers = result.ratings.filter((rating) => rating.recentMatches?.length).length
+      const missingRatings = squad.length - matchedCount
+      setRatingNotice(`${matchedCount} ${matchedCount === 1? "giocatore aggiornato" : "giocatori aggiornati"} con statistiche ufficiali · andamento ultime tre partite disponibile per ${recentFormPlayers} ${recentFormPlayers === 1? "giocatore" : "giocatori"}${missingRatings? ` · ${missingRatings} ${missingRatings === 1? "non trovato" : "non trovati"} nelle statistiche della stagione` : ""} · stagione ${result.season}.`)
+    } catch {
+      setRatingNotice("Recupero non riuscito. Riprova tra poco: la rosa non è stata modificata.")
+    } finally {
+      setSyncingRatings(false)
+    }
+  }
+  function goHome() {
+    setSelectedPlayer(null)
+    setPage("home")
+  }
+  if (!introEntered) return <FantaVibesIntro onEnter={() => setIntroEntered(true)} />
+  return (
+    <main className="relative isolate min-h-[100svh] bg-[#071b14] font-sans text-white selection:bg-[#ffe85e] selection:text-[#0a0c1e]">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <Image src="/football-pitch-background.png" alt="" fill priority sizes="100vw" className="object-cover object-center opacity-70" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(4,15,19,0.48),rgba(5,19,18,0.64)),radial-gradient(ellipse_at_center,transparent_10%,rgba(2,12,14,0.42)_100%)]" />
+      </div>
+      <div className="relative z-10">
+      {page === "home" && <div className="mx-auto flex min-h-[100svh] w-full max-w-6xl flex-col overflow-x-hidden px-4 pb-3 sm:px-8 sm:pb-5">
+        <header className="flex shrink-0 items-start justify-between border-b border-white/[0.07] py-4 sm:py-5">
+      <div className="flex min-w-0 items-start"><FantaVibesLogo large /><div className="-mt-0.5 ml-1 origin-top-left -rotate-[7deg] whitespace-nowrap text-right text-[8px] font-bold uppercase italic leading-[1.2] tracking-[0.1em] text-white/55"><p>powered by the original</p><p className="mt-1 text-[#ffe85e]/80">chaltrons league</p></div></div>
+          <div className="flex shrink-0 items-center gap-2">
+            <ThemeSwitch theme={theme} onChange={setTheme} compact />
+            <button type="button" aria-label="Apri impostazioni" onClick={() => setSettingsOpen(true)} className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-[#151732] text-white/70 transition hover:border-[#ffe85e]/40 hover:text-[#ffe85e]"><Settings2 size={18} /></button>
+          </div>
+        </header>
+        <div className="mx-auto flex w-full max-w-2xl

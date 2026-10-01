@@ -231,51 +231,28 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   }
 }
 function parseRosterRows(rows: unknown[][]) {
-  const normalizedRows = rows.map((row) => (Array.isArray(row)? row.map((cell) => String(cell?? "").trim()) : []))
+  const normalizedRows = rows.map((row) => (Array.isArray(row)? row.map((cell) => String(cell?? "").trim()).filter(Boolean) : []))
   const players: Player[] = []
-  const seenNames = new Set<string>()
-  const headerIndex = normalizedRows.findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
-
-  const addPlayer = (name: string, team = "", roleText = "", inj?: boolean, suspended?: boolean) => {
-    const cleanName = name.replace(/^\s*\d+\.\s*-?\s*|\s*\d+\.\s*-?\s*$/g, "").trim()
-    if (!cleanName || cleanName.length < 3) return
-    if (/^(giocatore|nome|ruolo|squadra|team)$/i.test(cleanName)) return
-    const key = normalizeName(cleanName)
-    if (key.length < 2 || seenNames.has(key)) return
-    seenNames.add(key)
-    players.push(createImportedPlayer(cleanName, team, roleText, inj, suspended))
+  const seen = new Set<string>()
+  const add = (raw: string) => {
+    const name = raw.replace(/^\d+[\.\)]\s*|\s*\d+$/g,"").trim()
+    if (name.length < 3 || name.length > 40) return
+    if (/^[0-9\W]+$/.test(name)) return
+    if (/^(giocatore|nome|ruolo|team|squadra|rosa|lista)$/i.test(name)) return
+    const key = normalizeName(name)
+    if (seen.has(key)) return
+    seen.add(key)
+    players.push(createImportedPlayer(name, "", ""))
   }
-
-  if (headerIndex >= 0) {
-    const headers = normalizedRows[headerIndex].map(normalizeName)
-    let nameIndex = headers.findIndex((header) => NAME_HEADERS.has(header))
-    const firstNameIndex = headers.findIndex((header) => ["nome","firstname","nomeproprio"].includes(header))
-    const lastNameIndex = headers.findIndex((header) => ["cognome","lastname","cognomegiocatore"].includes(header))
-    if (nameIndex < 0 && firstNameIndex >= 0 && lastNameIndex >= 0) nameIndex = firstNameIndex
-    const teamIndex = headers.findIndex((header) => TEAM_HEADERS.has(header))
-    const roleIndexes = headers.map((header, index) => ROLE_HEADERS.has(header)? index : -1).filter((index) => index >= 0)
-    const injuryIndex = headers.findIndex((header) => INJURY_HEADERS.has(header))
-    const suspensionIndex = headers.findIndex((header) => SUSPENSION_HEADERS.has(header))
-    const statusIndexes = headers.map((header, index) => STATUS_HEADERS.has(header)? index : -1).filter((index) => index >= 0)
-    for (const row of normalizedRows.slice(headerIndex + 1)) {
-      const name = firstNameIndex >= 0 && lastNameIndex >= 0? `${row[firstNameIndex]?? ""} ${row[lastNameIndex]?? ""}`.trim() : row[nameIndex]?? ""
-      if (!name) continue
-      const statusText = statusIndexes.map((index) => row[index]?? "").join(" ")
-      const importedInjury = parseAvailabilityFlag(injuryIndex >= 0? row[injuryIndex] : undefined, "injury", injuryIndex >= 0? headers[injuryIndex] : undefined) || parseAvailabilityFlag(statusText, "injury")
-      const importedSuspension = parseAvailabilityFlag(suspensionIndex >= 0? row[suspensionIndex] : undefined, "suspension", suspensionIndex >= 0? headers[suspensionIndex] : undefined) || parseAvailabilityFlag(statusText, "suspension")
-      addPlayer(name, teamIndex >= 0? row[teamIndex] : "", roleIndexes.map((index) => row[index]?? "").join(" "), importedInjury, importedSuspension)
-    }
-  } else {
-    // NESSUN HEADER TROVATO -> importa tutto quello che sembra un nome
-    for (const row of normalizedRows) {
-      for (const cell of row) {
-        if (!cell || String(cell).length < 3) continue
-        // salta numeri, ruoli singoli P D C A, nomi squadra
-        if (/^[0-9]+$/.test(String(cell).trim())) continue
-        if (/^[PDCA]$/i.test(String(cell).trim())) continue
-        if (String(cell).length > 30) continue
-        addPlayer(String(cell))
-      }
+  for (const row of normalizedRows) {
+    for (const cell of row) {
+      if (!cell) continue
+      const s = String(cell).trim()
+      if (s.length < 3) continue
+      if (/^[PDCAM]+$/i.test(s) && s.length <= 3) continue
+      if (/^\d+$/.test(s)) continue
+      if (s.includes("@") || s.includes("€")) continue
+      add(s)
     }
   }
   return players
@@ -339,6 +316,25 @@ async function importRosterFile(file: File): Promise<Player[]> {
     return sheet? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "" })) : []
   })
   return [...new Map(players.map((player) => [player.id, player])).values()]
+}
+function matchRosterFrom0cr(text: string): Player[] {
+  const players: Player[] = []
+  const seen = new Set<string>()
+  const lines = text.split(/\r?\n/)
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    if (line.length < 3 || line.length > 60) continue
+    const cleaned = line.replace(/^\d+[\.\)\-\s]+/, "").replace(/[^a-zA-ZÀ-ÿ\s']/g, " ").trim()
+    const words = cleaned.split(/\s+/).filter(w => w.length >= 2)
+    if (words.length >= 2 && words.length <= 4) {
+      const name = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
+      const key = name.toLowerCase().replace(/\s+/g, "")
+      if (key.length < 3 || seen.has(key)) continue
+      seen.add(key)
+      players.push(createImportedPlayer(name, "", ""))
+    }
+  }
+  return players
 }
 function isStoredPlayer(value: unknown): value is Player {
   if (!value || typeof value!== "object") return false

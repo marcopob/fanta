@@ -830,34 +830,31 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
 function parseRosterRows(rows: unknown[][]) {
   const players: Player[] = []
   const seen = new Set<string>()
-
-  try {
-    for (const r of rows as any[]) {
-      if (!r) continue
-      const row = Array.isArray(r)? r : [r]
-
-      for (let raw of row) {
-        if (raw == null) continue
-        let name = String(raw).trim()
-        if (!name) continue
-        name = name.replace(/^\d+[\.\)\-\s]+/, "").trim()
-        if (name.length < 3) continue
-        // salta intestazioni
-        if (/^(nome|giocatore|ruolo|squadra|team|rosa|pv|mv|fm|id|rm|r|por|dc|dd|ds|e|m|c|w|t|pc)$/i.test(name)) continue
-
-        const key = name.toLowerCase()
-        if (seen.has(key)) continue
-        seen.add(key)
-
-        const p = createImportedPlayer(name, "", "")
-        if (p) players.push(p)
-      }
+  for (const r of rows as any[]) {
+    if (!r ||!Array.isArray(r)) continue
+    // prende la prima stringa lunga >=2 che non sia header
+    let rawName = ""
+    for (const cell of r) {
+      if (!cell) continue
+      const s = String(cell).trim()
+      if (s.length < 2) continue
+      if (/^(nome|ruolo|squadra|id|rm|pv|mv|fm|por|dc|dd|ds|e|m|c|w|t|pc|r|giocatore|lista)$/i.test(s)) continue
+      rawName = s
+      break
     }
-  } catch (e) {
-    console.error("parseRosterRows error", e)
-  }
+    // fallback: se riga è tipo ["Falcone"] -> rawName = Falcone
+    if (!rawName && r.length === 1) rawName = String(r[0] || "").trim()
+    if (!rawName || rawName.length < 2) continue
 
-  console.log("Giocatori importati:", players.length, players.map(p=>p.name))
+    const key = rawName.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    // cerca nei 599, se non c'è lo crea lo stesso
+    const p = createImportedPlayer(rawName, "", "", false, false)
+    if (p) players.push(p)
+  }
+  console.log("Stalingrado trovati:", players.length, players.map(p=>p.name))
   return players
 }
 function getCsvDelimiter(text: string) {

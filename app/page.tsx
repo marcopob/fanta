@@ -827,8 +827,6 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   }
 }
 
-}
-
 function parseRosterRows(rows: unknown[][]) {
   const players: Player[] = []
   const seen = new Set<string>()

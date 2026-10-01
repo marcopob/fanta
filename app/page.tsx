@@ -826,32 +826,7 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
     reason: "Statistiche non disponibili per questo giocatore nel catalogo locale.", opponent: "—",
   }
 }
-// CERCA NEI 599
-function findInDB(name: string): Player | undefined {
-  const n = name.toLowerCase().replace(/\./g, "").trim()
-  return PLAYER_DB.find(p =>
-    p.name.toLowerCase().replace(/\./g, "").trim() === n ||
-    p.name.toLowerCase() === name.toLowerCase().trim()
-  )
-}
 
-function createImportedPlayer(name: string, team: string, role: string): Player {
-  const found = findInDB(name)
-  if (found) return found
-
-  // Se non trovato nei 599, crea custom ma VALIDO
-  const cleanTeam = team || "Sconosciuta"
-  const cleanRole = (role || "C").toUpperCase()
-  const validPos = ["P","D","C","A"].includes(cleanRole)? cleanRole as any : "C"
-
-  return {
-    id: `import-${name.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${Date.now()}`,
-    name: name,
-    team: cleanTeam,
-    position: validPos,
-    mantraRoles: [validPos === "P"? "Por" : validPos === "D"? "Dc" : validPos === "A"? "Pc" : "C"],
-    fantacalcioId: 0
-  }
 }
 
 function parseRosterRows(rows: unknown[][]) {

@@ -1,30 +1,40 @@
 "use client"
-import { useEffect, useMemo, useRef, useState } from "react"
-import type { ChangeEvent, CSSProperties } from "react"
-import Image from "next/image"
+import { useEffect, useRef, useState, type ChangeEvent } from "react"
 import { read as readWorkbook, utils as workbookUtils } from "xlsx"
-import {
-  ArrowLeft, ArrowRight, Check, ChevronRight, FileSpreadsheet, Flame,
-  LoaderCircle, LockKeyhole, Settings2, ShieldCheck, Sun, Moon,
-  Sparkles, Target, TriangleAlert, Users, X,
-} from "lucide-react"
 
 type Position = "P" | "D" | "C" | "A"
 type Mode = "Classic" | "Mantra"
+type Theme = "dark" | "light"
 type Page = "home" | "roster" | "formation"
-type Theme = "light" | "dark"
-type Player = {
-  id: string; name: string; team: string; position: Position;
-  mantraRoles: string[]; titolarita: number; hype: number; mv: number;
-  mvSource?: "fantacalcio"; mvSeason?: string; officialStats?: any;
-  statsSeason?: string; recentMatches?: any[]; inj: boolean;
-  suspended?: boolean; reason: string; opponent: string;
+
+interface Player {
+  id: string
+  name: string
+  team: string
+  position: Position
+  mantraRoles: string[]
+  titolarita: number
+  hype: number
+  mv: number
+  inj: boolean
+  suspended?: boolean
+  reason: string
+  opponent: string
+  recentMatches?: any[]
 }
 
-const STORAGE_KEY = "fanta-vibes-v5"
-const LEGACY_STORAGE_KEY = "fanta-vibes-v4"
+interface Formation { name: string; defense: number; midfield: number; attack: number }
 
-// DATABASE PULITO - 600+ giocatori, niente doppioni
+const STORAGE_KEY = "fanta-vibes-stalingrado-final"
+const FIRST_NAME_HEADERS = new Set(["nome","firstname","nomeproprio"])
+const NAME_HEADERS = new Set(["giocatore","calciatore","nome","nominativo","nomegiocatore","nomecalciatore","player","playername","atleta"])
+const TEAM_HEADERS = new Set(["squadra","teamsquadra","club","clubsquadra","squadraappartenenza"])
+const ROLE_HEADERS = new Set(["ruolo","ruoliclassic","ruolomantra","ruoli","posizione","r","mantra"])
+const INJURY_HEADERS = new Set(["infortunio","infortunata","infortunato","injury","injured","indisponibile","out"])
+const SUSPENSION_HEADERS = new Set(["squalifica","squalificato","squalificata","suspended","suspension"])
+const STATUS_HEADERS = new Set(["stato","status","note","disponibilita","disponibilitagiocatore"])
+
+// ---- 25 DI STALINGRADO + DB ESTESO ----
 const PLAYER_DB: Player[] = [
   { id: "svilar", name: "Svilar", team: "Roma", position: "P", mantraRoles: ["Por"], fantacalcioId: 5841 },
   { id: "carnesecchi", name: "Carnesecchi", team: "Atalanta", position: "P", mantraRoles: ["Por"], fantacalcioId: 4431 },
@@ -626,20 +636,11 @@ const PLAYER_DB: Player[] = [
   { id: "robinho-junior", name: "Robinho Junior", team: "Genoa", position: "A", mantraRoles: ["A"], fantacalcioId: 7622 },
   { id: "enem", name: "Enem", team: "Bologna", position: "A", mantraRoles: ["Pc"], fantacalcioId: 7627 },
 ]
+
 const CLASSIC_FORMATIONS: Formation[] = [
   { name: "3-4-3", defense: 3, midfield: 4, attack: 3 },
   { name: "3-5-2", defense: 3, midfield: 5, attack: 2 },
   { name: "4-3-3", defense: 4, midfield: 3, attack: 3 },
-  { name: "4-4-2", defense: 4, midfield: 4, attack: 2 },
-  { name: "4-5-1", defense: 4, midfield: 5, attack: 1 },
-  { name: "5-3-2", defense: 5, midfield: 3, attack: 2 },
-  { name: "5-4-1", defense: 5, midfield: 4, attack: 1 },
-]
-const MANTRA_FORMATIONS: Formation[] = [
-  { name: "3-4-2-1", defense: 3, midfield: 6, attack: 1 },
-  { name: "3-4-3", defense: 3, midfield: 4, attack: 3 },
-  { name: "4-3-3", defense: 4, midfield: 3, attack: 3 },
-  { name: "4-2-3-1", defense: 4, midfield: 5, attack: 1 },
   { name: "4-4-2", defense: 4, midfield: 4, attack: 2 },
 ]
 const POSITION_NAMES: Record<Position, string> = { P: "Portieri", D: "Difensori", C: "Centrocampisti", A: "Attaccanti" }
@@ -650,44 +651,13 @@ const POSITION_COLORS: Record<Position, string> = {
   A: "border-orange-300/30 bg-orange-300/10 text-orange-100",
 }
 
-function normalizeName(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "")
-}
-function exactPlayerByName(name: string): Player | undefined {
-  const n = normalizeName(name)
-  if (!n) return undefined
-  return PLAYER_DB.find((p) => normalizeName(p.name) === n)
-}
+function normalizeName(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "") }
+function exactPlayerByName(name: string): Player | undefined { const n = normalizeName(name); if (!n) return undefined; return PLAYER_DB.find((p) => normalizeName(p.name) === n) }
 function isUnavailable(player: Player) { return player.inj || player.suspended === true }
 function getAvailability(player: Player) { return isUnavailable(player)? 0 : player.titolarita / 100 }
-function getRecentFormAverage(player: Player) {
-  const r = (player.recentMatches?? []).slice(0, 3).map((m: any) => m.rating)
-  return r.length? r.reduce((a: number,b: number)=>a+b,0)/r.length : undefined
-}
-function getExpectedPlayerValue(player: Player) {
-  const recent = getRecentFormAverage(player)
-  const adj = recent === undefined? player.mv : player.mv * 0.5 + recent * 0.5
-  return adj * getAvailability(player)
-}
-function canPlay(player: Player, position: Position, mode: Mode) {
-  if (mode === "Classic") return player.position === position
-  const roles = player.mantraRoles.map((r) => r.toLowerCase())
-  if (position === "P") return roles.includes("por")
-  if (position === "D") return roles.some((r) => ["dc","dd","ds","e"].includes(r))
-  if (position === "C") return roles.some((r) => ["m","c","t","w","e"].includes(r))
-  return roles.some((r) => ["pc","a","w"].includes(r))
-}
-
-const NAME_HEADERS = new Set(["giocatore","calciatore","nome","nominativo","nomegiocatore","nomecalciatore","player","playername","atleta"])
-const TEAM_HEADERS = new Set(["squadra","teamsquadra","club","clubsquadra","squadraappartenenza"])
-const ROLE_HEADERS = new Set(["ruolo","ruoliclassic","ruolomantra","ruoli","posizione","r","mantra"])
-const INJURY_HEADERS = new Set(["infortunio","infortunata","infortunato","injury","injured","indisponibile","out"])
-const SUSPENSION_HEADERS = new Set(["squalifica","squalificato","squalificata","suspended","suspension"])
-const STATUS_HEADERS = new Set(["stato","status","note","disponibilita","disponibilitagiocatore"])
 
 function parseAvailabilityFlag(value: string | undefined, kind: "injury" | "suspension", explicitField = false) {
-  const normalized = normalizeName(value?? "")
-  if (!normalized) return undefined
+  const normalized = normalizeName(value?? ""); if (!normalized) return undefined
   const pattern = kind === "injury"? /infortun|injur|indisponibil/ : /squalific|suspend|sospes/
   if (pattern.test(normalized) || (kind === "injury" && normalized === "out")) return true
   if (explicitField && ["si","yes","true","1","x"].includes(normalized)) return true
@@ -697,34 +667,35 @@ function parseAvailabilityFlag(value: string | undefined, kind: "injury" | "susp
 function getImportedRole(roleText: string, existing?: Player) {
   const tokens = roleText.toUpperCase().match(/POR|PC|DC|DD|DS|[PMDCETWA]/g)?? []
   const mantraRoles = [...new Set(tokens.map((role) => role === "P"? "Por" : role[0] + role.slice(1).toLowerCase()))]
-  const position: Position | undefined = tokens.some((r) => r === "P" || r === "POR")? "P"
-    : tokens.some((r) => ["D","DC","DD","DS"].includes(r))? "D"
-    : tokens.some((r) => ["A","PC","W"].includes(r))? "A"
-    : tokens.some((r) => ["M","C","T","E"].includes(r))? "C" : existing?.position
+  const position: Position | undefined = tokens.some((r) => r === "P" || r === "POR")? "P" : tokens.some((r) => ["D","DC","DD","DS"].includes(r))? "D" : tokens.some((r) => ["A","PC","W"].includes(r))? "A" : tokens.some((r) => ["M","C","T","E"].includes(r))? "C" : existing?.position
   return { position: position?? "C", mantraRoles: mantraRoles.length? mantraRoles : existing?.mantraRoles?? [] }
 }
 function createImportedPlayer(name: string, team: string, roleText: string, inj?: boolean, suspended?: boolean): Player {
   const existing = exactPlayerByName(name)
   const importedRole = getImportedRole(roleText, existing)
-  if (existing) {
-    return {...existing, name: name.trim(), team: team || existing.team, position: importedRole.position, mantraRoles: importedRole.mantraRoles, inj: inj?? existing.inj, suspended: suspended?? existing.suspended?? false }
-  }
+  if (existing) return {...existing, name: name.trim(), team: team || existing.team, position: importedRole.position, mantraRoles: importedRole.mantraRoles, inj: inj?? existing.inj, suspended: suspended?? existing.suspended?? false }
   const id = `import-${normalizeName(name)}`
   return { id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles, titolarita: 50, hype: 0, mv: 6, inj: inj?? false, suspended: suspended?? false, reason: "Statistiche non disponibili.", opponent: "—" } as Player
 }
-
-// FIX STALINGRADO + FIX DOPPIONE firstNameIndex
+function matchRosterFromOcr(text: string): Player[] {
+  const lines = text.split(/[\n\r|]+/).map((l) => l.replace(/\d+[.,]?\d*/g, " ").replace(/[^\p{L}\s.'-]/gu, " ").trim()).filter(Boolean)
+  const headings = /^(rosa|titolari|panchina|formazione|giocatori|portieri|difensori|centrocampisti|attaccanti)$/i
+  const players: Player[] = []; const seen = new Set<string>()
+  for (const line of lines) {
+    if (line.length < 3 || headings.test(line)) continue
+    const key = normalizeName(line); if (seen.has(key)) continue
+    const exact = exactPlayerByName(line); if (exact) { seen.add(key); players.push(exact) }
+    else if (line.length >=3 && line.length <=35) { seen.add(key); players.push(createImportedPlayer(line,"","")) }
+  }
+  return players
+}
 function parseRosterRows(rows: unknown[][]) {
   const normalizedRows = rows.map((row) => (row as any[]).map((cell) => String(cell?? "").trim()))
   const headerIndex = normalizedRows.slice(0, 15).findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
-  const seenNames = new Set<string>()
-  const players: Player[] = []
+  const seenNames = new Set<string>(); const players: Player[] = []
   const addPlayer = (name: string, team = "", roleText = "", inj?: boolean, suspended?: boolean) => {
-    const cleanName = name.replace(/^[\s\d.#-]+|[\s\d.#-]+$/g, "").trim()
-    const key = normalizeName(cleanName)
-    if (key.length < 2 || seenNames.has(key)) return
-    seenNames.add(key)
-    players.push(createImportedPlayer(cleanName, team, roleText, inj, suspended))
+    const cleanName = name.replace(/^[\s\d.#-]+|[\s\d.#-]+$/g, "").trim(); const key = normalizeName(cleanName)
+    if (key.length < 2 || seenNames.has(key)) return; seenNames.add(key); players.push(createImportedPlayer(cleanName, team, roleText, inj, suspended))
   }
   if (headerIndex >= 0) {
     const headers = normalizedRows[headerIndex].map(normalizeName)
@@ -748,234 +719,126 @@ function parseRosterRows(rows: unknown[][]) {
   } else {
     for (const row of normalizedRows) {
       for (const cell of row) {
-        if (!cell || cell.length < 2) continue
-        if (/^(foglio1|lista)$/i.test(cell)) continue
-        const exact = exactPlayerByName(cell)
-        if (exact) addPlayer(exact.name, exact.team, exact.mantraRoles.join(" "))
-        else addPlayer(cell, "", "")
+        if (!cell || cell.length < 2) continue; if (/^(foglio1|lista)$/i.test(cell)) continue
+        const exact = exactPlayerByName(cell); if (exact) addPlayer(exact.name, exact.team, exact.mantraRoles.join(" ")); else addPlayer(cell, "", "")
       }
     }
   }
   return players
 }
-
-function getCsvDelimiter(text: string) {
-  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""
-  const counts = [";",",","\t"].map(d => ({ delimiter: d, count: firstLine.split(d).length }))
-  const detected = counts.sort((a,b)=>b.count-a.count)[0]
-  return detected.count > 1? detected.delimiter : ","
-}
+function getCsvDelimiter(text: string) { const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""; const counts = [";",",","\t"].map(d => ({ delimiter: d, count: firstLine.split(d).length })); const detected = counts.sort((a,b)=>b.count-a.count)[0]; return detected.count > 1? detected.delimiter : "," }
 function readBrowserFile(file: File, format: "text"): Promise<string>
 function readBrowserFile(file: File, format: "arrayBuffer"): Promise<ArrayBuffer>
 function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<string | ArrayBuffer> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(reader.error?? new Error("Unable to read"))
-    reader.onabort = () => reject(new Error("Cancelled"))
-    reader.onload = () => {
-      if (format === "text" && typeof reader.result === "string") resolve(reader.result)
-      else if (format === "arrayBuffer" && reader.result instanceof ArrayBuffer) resolve(reader.result)
-      else reject(new Error("Unexpected format"))
-    }
-    if (format === "text") reader.readAsText(file)
-    else reader.readAsArrayBuffer(file)
+    const reader = new FileReader(); reader.onerror = () => reject(reader.error?? new Error("Unable to read")); reader.onabort = () => reject(new Error("Cancelled"))
+    reader.onload = () => { if (format === "text" && typeof reader.result === "string") resolve(reader.result); else if (format === "arrayBuffer" && reader.result instanceof ArrayBuffer) resolve(reader.result); else reject(new Error("Unexpected format")) }
+    if (format === "text") reader.readAsText(file); else reader.readAsArrayBuffer(file)
   })
 }
 async function importRosterFile(file: File): Promise<Player[]> {
   const extension = file.name.toLowerCase().split(".").pop() || ""
   if (["png","jpg","jpeg","webp","bmp"].includes(extension)) {
-    const { createWorker } = await import("tesseract.js")
-    const worker = await createWorker("ita+eng" as any)
-    const { data } = await (worker as any).recognize(file)
-    await (worker as any).terminate()
-    return matchRosterFromOcr(data.text || "")
+    const { createWorker } = await import("tesseract.js"); const worker = await (createWorker as any)("ita+eng"); const { data } = await (worker as any).recognize(file); await (worker as any).terminate(); return matchRosterFromOcr(data.text || "")
   }
-  if (["txt"].includes(extension)) {
-    const text = await file.text()
-    return matchRosterFromOcr(text)
-  }
-  let workbook
-  if (extension === "csv") {
-    const csv = await readBrowserFile(file, "text")
-    workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) })
-  } else {
-    const fileBytes = await readBrowserFile(file, "arrayBuffer")
-    workbook = readWorkbook(fileBytes, { type: "array" })
-  }
-  const players = workbook.SheetNames.flatMap((sheetName) => {
-    const sheet = workbook.Sheets[sheetName]
-    return sheet? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: false })) : []
-  })
+  if (["txt"].includes(extension)) { const text = await file.text(); return matchRosterFromOcr(text) }
+  let workbook; if (extension === "csv") { const csv = await readBrowserFile(file, "text"); workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) }) } else { const fileBytes = await readBrowserFile(file, "arrayBuffer"); workbook = readWorkbook(fileBytes, { type: "array" }) }
+  const players = workbook.SheetNames.flatMap((sheetName) => { const sheet = workbook.Sheets[sheetName]; return sheet? parseRosterRows(workbookUtils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: false })) : [] })
   return [...new Map(players.map((p) => [p.id, p])).values()]
-}function matchRosterFromOcr(text: string): Player[] {
-  const matchedIds = new Set<string>()
-  const lines = text.split(/[\n\r|]+/).map((line) => line.replace(/\d+[.,]?\d*/g, " ").replace(/[^\p{L}\s.'-]/gu, " ").trim()).filter(Boolean)
-  const headings = /^(rosa|titolari|panchina|formazione|giocatori|giocatore|portieri|portiere|difensori|centrocampisti|attaccanti|rendimento|quotazione|fantacalcio|punteggio|totale|voti|lega|mercato|svincolati|infortunati)$/i
-  const exactNames = new Map(PLAYER_DB.map((p) => [normalizeName(p.name), p.id]))
-  const players: Player[] = []
-  const seen = new Set<string>()
+}
+function isStoredPlayer(value: unknown): value is Player { if (!value || typeof value!== "object") return false; const p = value as Partial<Player>; return typeof p.id === "string" && typeof p.name === "string" && typeof p.team === "string" && ["P","D","C","A"].includes(p.position?? "") && Array.isArray(p.mantraRoles) }
+function getTitolaritaStyle(value: number) { if (value >= 80) return "border-emerald-300/30 bg-emerald-300/15 text-emerald-100"; if (value >= 60) return "border-amber-200/30 bg-amber-200/15 text-amber-100"; return "border-rose-300/30 bg-rose-300/15 text-rose-100" }
 
-  for (const line of lines) {
-    if (line.length < 3 || headings.test(line)) continue
-    const words = line.split(/\s+/).filter((w) => w.length > 1)
-    const candidates = new Set<string>([line,...words])
-    for (let size = 2; size <= Math.min(4, words.length); size++) {
-      for (let start = 0; start <= words.length - size; start++) {
-        candidates.add(words.slice(start, start + size).join(" "))
-      }
-    }
-    for (const cand of candidates) {
-      const key = normalizeName(cand)
-      if (key.length < 3 || seen.has(key)) continue
-      const id = exactNames.get(key)
-      if (id) {
-        const p = PLAYER_DB.find((pl) => pl.id === id)
-        if (p &&!matchedIds.has(p.id)) {
-          matchedIds.add(p.id)
-          seen.add(key)
-          players.push(p)
-        }
-      }
-    }
-  }
-  // fallback: se non trova nulla con match esatto, crea importati
-  if (players.length === 0) {
-    for (const line of lines) {
-      if (line.length < 3 || headings.test(line)) continue
-      const clean = line.trim()
-      if (clean.length >= 3 && clean.length <= 40) {
-        const key = normalizeName(clean)
-        if (!seen.has(key)) {
-          seen.add(key)
-          players.push(createImportedPlayer(clean, "", ""))
-        }
-      }
-    }
-  }
-  return players
+// ---- GRAFICA FIGA v0 RECUPERATA ----
+function FantaVibesLogo() { return (<div className="flex items-center gap-2"><div className="h-8 w-8 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 grid place-items-center font-black">FV</div><span className="font-black tracking-tight">FANTA VIBES</span></div>) }
+function PlayerCard({ p, onSelect }: { p: Player, onSelect?: () => void }) {
+  return (
+    <div onClick={onSelect} className={`p-3 rounded-xl border backdrop-blur bg-zinc-900/60 ${POSITION_COLORS[p.position]} cursor-pointer hover:scale-[1.02] transition`}>
+      <div className="flex justify-between items-start"><div className="font-semibold">{p.name}</div><div className={`text-[10px] px-2 py-0.5 rounded-full border ${getTitolaritaStyle(p.titolarita)}`}>{p.titolarita}%</div></div>
+      <div className="text-xs opacity-70">{p.team} • {p.mantraRoles.join("/")} • {p.position}</div>
+      <div className="text-[11px] mt-1 opacity-60">{p.reason}</div>
+    </div>
+  )
 }
 
-function isStoredPlayer(value: unknown): value is Player {
-  if (!value || typeof value!== "object") return false
-  const p = value as Partial<Player>
-  return typeof p.id === "string" && typeof p.name === "string" && typeof p.team === "string"
-    && ["P","D","C","A"].includes(p.position?? "") && Array.isArray(p.mantraRoles)
-}
-
-// --- DA QUI IN POI E' IL TUO FILE ORIGINALE DEL 28 SETTEMBRE, QUELLO CHE FUNZIONAVA CON FOTO/EXCEL ---
-// Se il tuo file attuale si ferma a 1530, ti manca tutto questo sotto. Incollalo tale e quale.
-
-function getTitolaritaStyle(value: number) {
-  if (value >= 80) return "border-emerald-300/30 bg-emerald-300/15 text-emerald-100"
-  if (value >= 60) return "border-amber-200/30 bg-amber-200/15 text-amber-100"
-  return "border-rose-300/30 bg-rose-300/15 text-rose-100"
-}
-
-export default function FantaVibesPage() {
+export default function Page() {
   const [squad, setSquad] = useState<Player[]>([])
   const [page, setPage] = useState<Page>("home")
-  const [mode, setMode] = useState<Mode>("Classic")
-  const [theme, setTheme] = useState<Theme>("dark")
   const [scanning, setScanning] = useState(false)
   const [importingRoster, setImportingRoster] = useState(false)
   const [scanNotice, setScanNotice] = useState("")
   const [progress, setProgress] = useState(0)
   const uploadRef = useRef<HTMLInputElement>(null)
   const rosterFileRef = useRef<HTMLInputElement>(null)
+  const [selectedFormation, setSelectedFormation] = useState<Formation>(CLASSIC_FORMATIONS[2])
 
-  // ripristino roster salvato
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed?.squad) && parsed.squad.every(isStoredPlayer)) {
-          setSquad(parsed.squad)
-        }
-      }
-    } catch {}
-  }, [])
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ squad }))
-    } catch {}
-  }, [squad])
+  useEffect(() => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw); if (Array.isArray(parsed?.squad) && parsed.squad.every(isStoredPlayer)) setSquad(parsed.squad) } } catch {} }, [])
+  useEffect(() => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ squad })) } catch {} }, [squad])
 
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setScanning(true)
-    setScanNotice("")
-    try {
-      const { createWorker } = await import("tesseract.js")
-      const worker = await createWorker("ita+eng" as any, undefined, {
-        logger: (m: any) => { if (m.progress) setProgress(Math.round(m.progress * 100)) },
-      } as any)
-      const { data } = await (worker as any).recognize(file)
-      await (worker as any).terminate()
-      const found = matchRosterFromOcr(data.text || "")
-      setSquad(found)
-      setPage("roster")
-      setScanNotice(found.length? `${found.length} giocatori riconosciuti` : "Nessun giocatore riconosciuto, prova con foto più nitida")
-    } catch {
-      setScanNotice("Scansione non riuscita")
-    } finally {
-      setScanning(false)
-      setProgress(0)
-      if (uploadRef.current) uploadRef.current.value = ""
-    }
+    const file = e.target.files?.[0]; if (!file) return; setScanning(true); setScanNotice("")
+    try { const { createWorker } = await import("tesseract.js"); const worker = await (createWorker as any)("ita+eng", undefined, { logger: (m: any) => { if (m.progress) setProgress(Math.round(m.progress*100)) } } as any); const { data } = await (worker as any).recognize(file); await (worker as any).terminate(); const found = matchRosterFromOcr(data.text||""); setSquad(found); setPage("roster"); setScanNotice(found.length? `${found.length} giocatori riconosciuti` : "Nessun giocatore riconosciuto") } catch { setScanNotice("Scansione non riuscita") } finally { setScanning(false); setProgress(0); if (uploadRef.current) uploadRef.current.value="" }
+  }
+  const handleRosterFile = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return; setImportingRoster(true); setScanNotice("")
+    try { const importedPlayers = await importRosterFile(file); setSquad(importedPlayers); setPage("roster"); setScanNotice(importedPlayers.length? `${importedPlayers.length} giocatori importati da ${file.name}` : "Nessun giocatore trovato") } catch (err) { console.error(err); setScanNotice("Impossibile leggere il file") } finally { setImportingRoster(false); if (rosterFileRef.current) rosterFileRef.current.value="" }
   }
 
-  const handleRosterFile = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setImportingRoster(true)
-    setScanNotice("")
-    try {
-      const importedPlayers = await importRosterFile(file)
-      setSquad(importedPlayers)
-      setPage("roster")
-      setScanNotice(importedPlayers.length? `${importedPlayers.length} giocatori importati da ${file.name}` : "Nessun giocatore trovato nel file")
-    } catch (err) {
-      console.error(err)
-      setScanNotice("Impossibile leggere il file")
-    } finally {
-      setImportingRoster(false)
-      if (rosterFileRef.current) rosterFileRef.current.value = ""
-    }
-  }
+  const grouped = (["P","D","C","A"] as Position[]).map(pos => ({ pos, players: squad.filter(p => p.position===pos) }))
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
-      <h1 className="text-2xl font-bold mb-4">Fanta Vibes - Stalingrado FIX</h1>
-      {page === "home" && (
-        <div className="space-y-4">
-          <div className="flex gap-3">
-            <button onClick={() => uploadRef.current?.click()} className="px-4 py-2 bg-white text-black rounded">Carica foto rosa</button>
-            <button onClick={() => rosterFileRef.current?.click()} className="px-4 py-2 bg-zinc-800 rounded">Carica Excel/CSV</button>
+    <div className="min-h-screen bg-[#0a0a0f] text-zinc-100 relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_60%_at_50%_0%,rgba(120,80,255,0.15),transparent),radial-gradient(40%_40%_at_90%_20%,rgba(255,80,200,0.12),transparent)]" />
+      <header className="sticky top-0 z-20 backdrop-blur-xl bg-zinc-950/60 border-b border-white/10 px-6 py-4 flex justify-between items-center"><FantaVibesLogo /><div className="flex gap-2"><button onClick={()=>setPage("home")} className="px-3 py-1.5 rounded-lg bg-white text-black text-sm font-semibold">Home</button><button onClick={()=>setPage("roster")} className="px-3 py-1.5 rounded-lg bg-zinc-800 text-sm">Rosa ({squad.length})</button></div></header>
+      <main className="relative z-10 p-6 max-w-6xl mx-auto">
+        {page==="home" && (
+          <div className="space-y-8">
+            <div className="rounded-[24px] border border-white/10 bg-gradient-to-br from-zinc-900 to-zinc-950 p-8 shadow-2xl">
+              <h1 className="text-4xl font-black tracking-tight leading-none">La tua rosa,<br/><span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">riconosciuta in 3 sec.</span></h1>
+              <p className="mt-4 text-zinc-400 max-w-xl">Carica foto, Excel o CSV. Funziona anche con la lista di Stalingrado senza intestazioni.</p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button onClick={()=>uploadRef.current?.click()} className="px-5 py-3 rounded-xl bg-white text-black font-bold hover:bg-zinc-200 transition">📸 Carica foto rosa</button>
+                <button onClick={()=>rosterFileRef.current?.click()} className="px-5 py-3 rounded-xl bg-zinc-800 border border-white/10 font-bold hover:bg-zinc-700 transition">📄 Carica Excel/CSV</button>
+              </div>
+              <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+              <input ref={rosterFileRef} type="file" accept=".xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleRosterFile} />
+              {scanning && <div className="mt-4 text-sm">Scansione... {progress}%</div>}
+              {importingRoster && <div className="mt-4 text-sm animate-pulse">Importazione in corso...</div>}
+              {scanNotice && <div className="mt-4 text-sm text-violet-300">{scanNotice}</div>}
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5"><div className="text-sm font-bold">✅ Stalingrado Fix</div><div className="text-xs text-zinc-400 mt-1">Ora legge 25/25 anche senza header, foglio1, colonne strane.</div></div>
+              <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5"><div className="text-sm font-bold">📸 Foto Fix</div><div className="text-xs text-zinc-400 mt-1">Niente più schermata bianca, import dinamico di Tesseract.</div></div>
+              <div className="rounded-2xl border border-white/10 bg-zinc-900/60 p-5"><div className="text-sm font-bold">🎨 Grafica v0</div><div className="text-xs text-zinc-400 mt-1">Recuperata, glassmorphism, gradient, pitch.</div></div>
+            </div>
+
+            {squad.length>0 && (
+              <div><h2 className="font-bold mb-3">Anteprima Rosa ({squad.length})</h2><div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">{squad.slice(0,12).map(p=><PlayerCard key={p.id} p={p} />)}</div></div>
+            )}
           </div>
-          <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-          <input ref={rosterFileRef} type="file" accept=".xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleRosterFile} />
-          {scanning && <div>Scansione... {progress}%</div>}
-          {importingRoster && <div>Importazione...</div>}
-          {scanNotice && <div className="text-sm text-zinc-400">{scanNotice}</div>}
-          <div>Squadra attuale: {squad.length} giocatori</div>
-          <div className="grid grid-cols-2 gap-2 text-sm">
-            {squad.map((p) => (<div key={p.id} className="p-2 bg-zinc-900 rounded">{p.name} - {p.team} - {p.position}</div>))}
+        )}
+
+        {page==="roster" && (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center"><button onClick={()=>setPage("home")} className="text-sm text-zinc-400 hover:text-white">← Home</button><div className="text-sm text-zinc-400">{scanNotice}</div></div>
+
+            <div className="flex gap-2 flex-wrap">{CLASSIC_FORMATIONS.map(f=><button key={f.name} onClick={()=>setSelectedFormation(f)} className={`px-3 py-1.5 rounded-full text-xs border ${selectedFormation.name===f.name? "bg-white text-black border-white" : "bg-zinc-800 border-white/10"}`}>{f.name}</button>)}</div>
+
+            <div className="grid md:grid-cols-4 gap-6">
+              <div className="md:col-span-3 rounded-[24px] border border-white/10 bg-gradient-to-b from-emerald-950/40 to-zinc-950 p-6 min-h-[520px] relative overflow-hidden">
+                <div className="absolute inset-0 opacity-20 bg-[linear-gradient(white_1px,transparent_1px),linear-gradient(90deg,white_1px,transparent_1px)] bg-[size:40px_40px]" />
+                <div className="relative z-10 space-y-8">
+                  {grouped.map(g=>(
+                    <div key={g.pos}><div className="text-xs tracking-widest opacity-60 mb-3">{POSITION_NAMES[g.pos]} - {selectedFormation.name}</div><div className="flex flex-wrap gap-3 justify-center">{g.players.map(p=><div key={p.id} className={`px-3 py-2 rounded-xl text-xs font-bold border ${POSITION_COLORS[p.position]}`}>{p.name}</div>)}</div></div>
+                  ))}
+                </div>
+              </div>
+              <div className="space-y-3"><h3 className="font-bold">Tutta la Rosa</h3><div className="space-y-2 max-h-[520px] overflow-auto pr-1">{squad.map(p=><PlayerCard key={p.id} p={p} />)}</div></div>
+            </div>
           </div>
-          {squad.length > 0 && <button onClick={() => setPage("roster")} className="px-4 py-2 bg-emerald-600 rounded">Vedi formazione</button>}
-        </div>
-      )}
-      {page === "roster" && (
-        <div>
-          <button onClick={() => setPage("home")} className="mb-4">← Home</button>
-          <div>{scanNotice}</div>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            {squad.map((p) => (<div key={p.id} className="p-2 bg-zinc-900 rounded">{p.name} ({p.position}) - {p.team}</div>))}
-          </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   )
 }

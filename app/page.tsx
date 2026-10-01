@@ -829,18 +829,51 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
 function parseRosterRows(rows: unknown[][]) {
   const players: Player[] = []
   const seen = new Set<string>()
+
   for (const r of rows as any[]) {
     if (!Array.isArray(r)) continue
-    for (let raw of r) {
-      let name = String(raw ?? "").trim()
-      if (name.length < 2) continue
-      if (/^(nome|giocatore|ruolo|squadra|team|rosa)$/i.test(name)) continue
-      name = name.replace(/^\d+[\.\)\-\s]+/, "").trim()
-      if (name.length < 3) continue
-      const key = name.toLowerCase()
-      if (seen.has(key)) continue
-      seen.add(key)
-      players.push(createImportedPlayer(name, "", ""))
+
+    // Il tuo file ha struttura: [Id, R, Rm, Nome, Squadra, Pv, Mv, Fm...]
+    // Nome è in posizione 3, Squadra in 4, R in 1
+    let nome = ""
+    let squadra = ""
+    let ruolo = ""
+
+    if (r.length >= 5 && typeof r[3] === 'string' && isNaN(Number(r[3]))) {
+      // Formato tuo ufficiale 26/27
+      nome = String(r[3] || "").trim()
+      squadra = String(r[4] || "").trim()
+      ruolo = String(r[1] || "").trim()
+    } else {
+      // Fallback: cerca la stringa più lunga che sembra un nome
+      for (let raw of r) {
+        let name = String(raw?? "").trim()
+        name = name.replace(/^\d+[\.\)\-\s]+/, "").trim()
+        if (name.length < 3) continue
+        if (/^(nome|giocatore|ruolo|squadra|team|rosa|pv|mv|fm|id|rm|r)$/i.test(name)) continue
+        if (/^(p|d|c|a|por|dc|dd|ds|e|m|c|w|t|a|pc)$/i.test(name)) continue
+        if (name.length > 2 && isNaN(Number(name))) {
+          nome = name
+          break
+        }
+      }
+    }
+
+    if (!nome || nome.length < 3) continue
+    const key = nome.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    // Cerca nei 599 che hai appena incollato
+    const found = PLAYER_DB.find(p =>
+      p.name.toLowerCase() === key ||
+      p.name.toLowerCase().replace(/\./g, "") === key.replace(/\./g, "")
+    )
+
+    if (found) {
+      players.push(found)
+    } else {
+      players.push(createImportedPlayer(nome, squadra, ruolo))
     }
   }
   return players

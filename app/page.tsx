@@ -805,28 +805,6 @@ function getImportedRole(roleText: string, existing?: Player) {
           : existing?.position
   return { position: position?? "C", mantraRoles: mantraRoles.length? mantraRoles : existing?.mantraRoles?? [] }
 }
-function createImportedPlayer(name: string, team: string, roleText: string, inj?: boolean, suspended?: boolean): Player {
-  const existing = exactPlayerByName(name)
-  const importedRole = getImportedRole(roleText, existing)
-  if (existing) {
-    return {
-    ...existing,
-      name: name.trim(),
-      team: team || existing.team,
-      position: importedRole.position,
-      mantraRoles: importedRole.mantraRoles,
-      inj: inj?? existing.inj,
-      suspended: suspended?? existing.suspended?? false,
-    }
-  }
-  const id = `import-${normalizeName(name)}`
-  return {
-    id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles,
-    titolarita: 50, hype: 0, mv: 6, inj: inj?? false, suspended: suspended?? false,
-    reason: "Statistiche non disponibili per questo giocatore nel catalogo locale.", opponent: "—",
-  }
-}
-
 function createImportedPlayer(
   name: string,
   team: string = "",
@@ -836,22 +814,17 @@ function createImportedPlayer(
 ): Player | undefined {
   const cleanName = String(name).trim()
   if (!cleanName || cleanName.length < 2) return undefined
-
-  // cerca nei 599 se esiste
   const key = cleanName.toLowerCase()
-  const found = PLAYER_DB.find(p => p.name.toLowerCase() === key || p.name.toLowerCase().includes(key) || key.includes(p.name.toLowerCase()))
+  const found = (PLAYER_DB as any[]).find(p => p.name.toLowerCase() === key)
   if (found) return found
-
-  // se non esiste, CREALO LO STESSO come importato
   return {
-    id: `imported_${cleanName.toLowerCase().replace(/\s+/g, "_")}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
+    id: `imported_${key.replace(/\s+/g,"_")}_${Date.now()}`,
     name: cleanName,
     team: team || "Sconosciuta",
     role: (role as any) || "C",
     rm: role || "C",
-    pv: 0, mv: 0, fm: 0, // o quello che usa il tuo tipo Player
-    isTop: isTop,
-    isLowCost: isLowCost,
+    pv: 0, mv: 0, fm: 0,
+    isTop, isLowCost,
     isImported: true,
   } as Player
 }

@@ -231,143 +231,6 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   }
 }
 function parseRosterRows(rows: unknown[][]) {
-  const normalizedRows = rows.map((row) => (Array.isArray(row)? row.map((cell) => String(cell?? "").trim()).filter(Boolean) : []))
-  const players: Player[] = []
-  const seen = new Set<string>()
-  const add = (raw: string) => {
-    const name = raw.replace(/^\d+[\.\)]\s*|\s*\d+$/g,"").trim()
-    if (name.length < 3 || name.length > 40) return
-    if (/^[0-9\W]+$/.test(name)) return
-    if (/^(giocatore|nome|ruolo|team|squadra|rosa|lista)$/i.test(name)) return
-    const key = normalizeName(name)
-    if (seen.has(key)) return
-    seen.add(key)
-    players.push(createImportedPlayer(name, "", ""))
-  }
-  for (const row of normalizedRows) {
-    for (const cell of row) {
-      if (!cell) continue
-      const s = String(cell).trim()
-      if (s.length < 3) continue
-      if (/^[PDCAM]+$/i.test(s) && s.length <= 3) continue
-      if (/^\d+$/.test(s)) continue
-      if (s.includes("@") || s.includes("€")) continue
-      add(s)
-    }
-  }
-  return players
-}
-function getCsvDelimiter(text: string) {
-  const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""
-  const counts = [";", ",", "\t"].map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
-  const detected = counts.sort((a, b) => b.count - a.count)[0]
-  return detected.count > 1? detected.delimiter : ","
-}
-function readBrowserFile(file: File, format: "text"): Promise<string>
-function readBrowserFile(file: File, format: "arrayBuffer"): Promise<ArrayBuffer>
-function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<string | ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => reject(reader.error?? new Error("Unable to read selected file"))
-    reader.onabort = () => reject(new Error("File reading was cancelled"))
-    reader.onload = () => {
-      if (format === "text" && typeof reader.result === "string") resolve(reader.result)
-      else if (format === "arrayBuffer" && reader.result instanceof ArrayBuffer) resolve(reader.result)
-      else reject(new Error("Unexpected file format"))
-    }
-    if (format === "text") reader.readAsText(file)
-    else reader.readAsArrayBuffer(file)
-  })
-}
-async function importRosterFile(file: File): Promise<Player[]> {
-  const extension = file.name.split(".").pop()?.toLowerCase() || ""
-  console.log("Import file:", file.name, extension)
-
-  // 1. FILE TESTO - CSV / TXT
-  if (["txt", "csv"].includes(extension)) {
-    const text = await file.text()
-    console.log("Testo file:", text.substring(0, 500))
-    if (!text.trim()) return []
-    // Se è CSV con righe, usa parseRosterRows, altrimenti OCR
-    const rows = text.split(/\r?\n/).map(l => l.split(/[,;\t]+/))
-    const fromRows = parseRosterRows(rows)
-    if (fromRows.length > 0) return fromRows
-    return matchRosterFrom0cr(text)
-  }
-
-  // 2. IMMAGINI - OCR
-  if (["png", "jpg", "jpeg", "webp", "bmp"].includes(extension)) {
-    try {
-      const { createWorker } = await import("tesseract.js")
-      const worker: any = await (createWorker as any)()
-      await (worker as any).loadLanguage("ita+eng")
-      await (worker as any).initialize("ita+eng")
-      const ret = await (worker as any).recognize(file)
-      const text = ret.data?.text || ""
-      await (worker as any).terminate()
-      console.log("OCR text:", text)
-      if (!text.trim()) {
-        alert("OCR non ha letto nulla dalla foto")
-        return []
-      }
-      return matchRosterFrom0cr(text)
-    } catch (e) {
-      console.error("OCR error", e)
-      alert("Errore OCR: " + e)
-      return []
-    }
-  }
-
-  // 3. EXCEL - XLSX / XLS
-  let workbook
-  if (extension === "csv") {
-    const csv = await readBrowserFile(file, "text") as string
-    workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) })
-  } else {
-    const buffer = await readBrowserFile(file, "arrayBuffer") as ArrayBuffer
-    workbook = readWorkbook(buffer, { type: "array" })
-  }
-
-  const allPlayers = workbook.SheetNames.flatMap((sheetName: string) => {
-    const sheet = workbook.Sheets[sheetName]
-    if (!sheet) return []
-    // @ts-ignore
-    const rows = workbookUtils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][]
-    console.log("Righe Excel lette dal foglio", sheetName, ":", rows.length)
-    return parseRosterRows(rows)
-  })
-
-  console.log("Giocatori finali trovati:", allPlayers.length)
-  if (allPlayers.length === 0) {
-    alert("Ho letto il file ma non ho trovato nomi. Righe lette: " + workbook.SheetNames.length + " fogli")
-  } else {
-    alert("Trovati " + allPlayers.length + " giocatori! Li aggiungo alla tua rosa.")
-  }
-  return allPlayers
-}
-
-function matchRosterFrom0cr(text: string): Player[] {
-  const players: Player[] = []
-  const seen = new Set<string>()
-  const lines = text.split(/\r?\n/)
-  for (const raw of lines) {
-    let name = raw.trim()
-    if (name.length < 3) continue
-    name = name.replace(/^\d+[\.\)\-\s]+/, "").replace(/^\s*\d+\s*$/, "").trim()
-    name = name.replace(/[^a-zA-ZÀ-ÿ\s'\-]/g, " ").replace(/\s+/g, " ").trim()
-    if (name.length < 3 || name.length > 50) continue
-    const words = name.split(" ").filter(w => w.length >= 2)
-    if (words.length < 1 || words.length > 4) continue
-    if (/^(nome|ruolo|giocatore|squadra|rosa|portiere|difensore|centrocampista|attaccante)$/i.test(name)) continue
-    const key = name.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    players.push(createImportedPlayer(name, "", ""))
-  }
-  return players
-}
-
-function parseRosterRows(rows: unknown[][]) {
   const players: Player[] = []
   const seen = new Set<string>()
   for (const row of rows) {
@@ -377,9 +240,8 @@ function parseRosterRows(rows: unknown[][]) {
       if (cell.length < 3) continue
       cell = cell.replace(/^\d+[\.\)\-\s]+/, "").trim()
       if (cell.length < 3) continue
-      if (/^(nome|giocatore|ruolo|squadra|team|portiere|difensore|centrocampista|attaccante|rosa|lista)$/i.test(cell)) continue
+      if (/^(nome|giocatore|ruolo|squadra|team|rosa)$/i.test(cell)) continue
       if (!/[a-zA-ZÀ-ÿ]{2,}/.test(cell)) continue
-      // se è solo numeri o simboli scarta
       if (/^[\d\W]+$/.test(cell)) continue
       const key = cell.toLowerCase()
       if (seen.has(key)) continue
@@ -389,24 +251,84 @@ function parseRosterRows(rows: unknown[][]) {
   }
   return players
 }
-function isStoredPlayer(value: unknown): value is Player {
-  if (!value || typeof value!== "object") return false
-  const p = value as any
-  return typeof p.id === "string" && typeof p.name === "string" && typeof p.team === "string" && typeof p.reason === "string" && typeof p.opponent === "string"
+
+function getCsvDelimiter(text: string) {
+  const firstLine = text.split(/\r?\n/)[0] || ""
+  const commas = (firstLine.match(/,/g) || []).length
+  const semis = (firstLine.match(/;/g) || []).length
+  return semis > commas? ";" : ","
 }
-function getTitolaritaStyle(value: number) {
-  if (value >= 80) return "border-emerald-300/30 bg-emerald-300/15 text-emerald-100"
-  if (value >= 60) return "border-amber-200/30 bg-amber-200/15 text-amber-100"
-  return "border-rose-300/30 bg-rose-300/15 text-rose-100"
+
+function readBrowserFile(file: File, type: "text" | "arrayBuffer"): Promise<string | ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as any)
+    reader.onerror = reject
+    if (type === "text") reader.readAsText(file)
+    else reader.readAsArrayBuffer(file)
+  })
 }
-function FantaVibesLogo({ large = false }: { large?: boolean }) {
-  return (
-    <span role="img" aria-label="Fanta Vibes" className={`relative block shrink-0 select-none ${large? "h-[76px] w-[184px]" : "h-[52px] w-[126px]"}`}>
-      <span className={`absolute left-1 top-0 -rotate-[8deg] font-black italic leading-none tracking-[-0.09em] text-[#ffe85e] ${large? "text-[36px]" : "text-[25px]"}`}>FANTA</span>
-      <span aria-hidden="true" className={`absolute left-1 -rotate-[8deg] bg-gradient-to-r from-[#ffe85e]/25 via-[#ffe85e] to-[#ffe85e]/30 ${large? "top-[34px] h-[3px] w-[164px]" : "top-[24px] h-[2px] w-[112px]"}`} />
-      <span className={`absolute -rotate-[8deg] font-black italic leading-none tracking-[-0.07em] text-white ${large? "left-[45px] top-[43px] text-[31px]" : "left-[31px] top-[29px] text-[22px]"}`}>VIBES</span>
-    </span>
-  )
+
+function matchRosterFrom0cr(text: string): Player[] {
+  const players: Player[] = []
+  const seen = new Set<string>()
+  const lines = text.split(/\r?\n/)
+  for (const raw of lines) {
+    let name = raw.trim()
+    if (name.length < 3) continue
+    name = name.replace(/^\d+[\.\)\-\s]+/, "").replace(/[^a-zA-ZÀ-ÿ\s'\-]/g, " ").replace(/\s+/g, " ").trim()
+    if (name.length < 3 || name.length > 50) continue
+    const words = name.split(" ").filter(w => w.length >= 2)
+    if (words.length < 1 || words.length > 4) continue
+    if (/^(nome|ruolo|giocatore|squadra|rosa)$/i.test(name)) continue
+    const key = name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    players.push(createImportedPlayer(name, "", ""))
+  }
+  return players
+}
+
+async function importRosterFile(file: File): Promise<Player[]> {
+  const extension = file.name.split(".").pop()?.toLowerCase() || ""
+  if (["txt", "csv"].includes(extension)) {
+    const text = await file.text()
+    if (!text.trim()) return []
+    const rows = text.split(/\r?\n/).map(l => l.split(/[,;\t]+/))
+    const fromRows = parseRosterRows(rows)
+    if (fromRows.length > 0) return fromRows
+    return matchRosterFrom0cr(text)
+  }
+  if (["png", "jpg", "jpeg", "webp", "bmp"].includes(extension)) {
+    try {
+      const { createWorker } = await import("tesseract.js")
+      const worker: any = await (createWorker as any)()
+      await (worker as any).loadLanguage("ita+eng")
+      await (worker as any).initialize("ita+eng")
+      const ret = await (worker as any).recognize(file)
+      const text = ret.data?.text || ""
+      await (worker as any).terminate()
+      return matchRosterFrom0cr(text)
+    } catch (e) {
+      console.error(e)
+      return []
+    }
+  }
+  let workbook
+  if (extension === "csv") {
+    const csv = await readBrowserFile(file, "text") as string
+    workbook = readWorkbook(csv, { type: "string", FS: getCsvDelimiter(csv) })
+  } else {
+    const buffer = await readBrowserFile(file, "arrayBuffer") as ArrayBuffer
+    workbook = readWorkbook(buffer, { type: "array" })
+  }
+  const allPlayers = workbook.SheetNames.flatMap((sheetName: string) => {
+    const sheet = workbook.Sheets[sheetName]
+    if (!sheet) return []
+    const rows = workbookUtils.sheet_to_json(sheet, { header: 1, defval: "" }) as unknown[][]
+    return parseRosterRows(rows)
+  })
+  return allPlayers
 }
 function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
   const [arrived, setArrived] = useState(false)

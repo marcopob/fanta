@@ -231,22 +231,26 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   }
 }
 function parseRosterRows(rows: unknown[][]) {
-  const normalizedRows = rows.map((row) => row.map((cell) => String(cell?? "").trim()))
-  const headerIndex = normalizedRows.slice(0, 15).findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
-  const seenNames = new Set<string>()
+  const normalizedRows = rows.map((row) => (Array.isArray(row)? row.map((cell) => String(cell?? "").trim()) : []))
   const players: Player[] = []
+  const seenNames = new Set<string>()
+  const headerIndex = normalizedRows.findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
+
   const addPlayer = (name: string, team = "", roleText = "", inj?: boolean, suspended?: boolean) => {
-    const cleanName = name.replace(/^[\s\d.#-]+|[\s\d.#-]+$/g, "").trim()
+    const cleanName = name.replace(/^\s*\d+\.\s*-?\s*|\s*\d+\.\s*-?\s*$/g, "").trim()
+    if (!cleanName || cleanName.length < 3) return
+    if (/^(giocatore|nome|ruolo|squadra|team)$/i.test(cleanName)) return
     const key = normalizeName(cleanName)
     if (key.length < 2 || seenNames.has(key)) return
     seenNames.add(key)
     players.push(createImportedPlayer(cleanName, team, roleText, inj, suspended))
   }
+
   if (headerIndex >= 0) {
     const headers = normalizedRows[headerIndex].map(normalizeName)
     let nameIndex = headers.findIndex((header) => NAME_HEADERS.has(header))
-    const firstNameIndex = headers.findIndex((header) => ["nome", "firstname", "nomeproprio"].includes(header))
-    const lastNameIndex = headers.findIndex((header) => ["cognome", "lastname", "cognomegiocatore"].includes(header))
+    const firstNameIndex = headers.findIndex((header) => ["nome","firstname","nomeproprio"].includes(header))
+    const lastNameIndex = headers.findIndex((header) => ["cognome","lastname","cognomegiocatore"].includes(header))
     if (nameIndex < 0 && firstNameIndex >= 0 && lastNameIndex >= 0) nameIndex = firstNameIndex
     const teamIndex = headers.findIndex((header) => TEAM_HEADERS.has(header))
     const roleIndexes = headers.map((header, index) => ROLE_HEADERS.has(header)? index : -1).filter((index) => index >= 0)
@@ -257,15 +261,20 @@ function parseRosterRows(rows: unknown[][]) {
       const name = firstNameIndex >= 0 && lastNameIndex >= 0? `${row[firstNameIndex]?? ""} ${row[lastNameIndex]?? ""}`.trim() : row[nameIndex]?? ""
       if (!name) continue
       const statusText = statusIndexes.map((index) => row[index]?? "").join(" ")
-      const importedInjury = parseAvailabilityFlag(injuryIndex >= 0? row[injuryIndex] : undefined, "injury", injuryIndex >= 0)?? parseAvailabilityFlag(statusText, "injury")
-      const importedSuspension = parseAvailabilityFlag(suspensionIndex >= 0? row[suspensionIndex] : undefined, "suspension", suspensionIndex >= 0)?? parseAvailabilityFlag(statusText, "suspension")
+      const importedInjury = parseAvailabilityFlag(injuryIndex >= 0? row[injuryIndex] : undefined, "injury", injuryIndex >= 0? headers[injuryIndex] : undefined) || parseAvailabilityFlag(statusText, "injury")
+      const importedSuspension = parseAvailabilityFlag(suspensionIndex >= 0? row[suspensionIndex] : undefined, "suspension", suspensionIndex >= 0? headers[suspensionIndex] : undefined) || parseAvailabilityFlag(statusText, "suspension")
       addPlayer(name, teamIndex >= 0? row[teamIndex] : "", roleIndexes.map((index) => row[index]?? "").join(" "), importedInjury, importedSuspension)
     }
   } else {
+    // NESSUN HEADER TROVATO -> importa tutto quello che sembra un nome
     for (const row of normalizedRows) {
       for (const cell of row) {
-        const exactMatch = exactPlayerByName(cell)
-        if (exactMatch) addPlayer(exactMatch.name, exactMatch.team, exactMatch.mantraRoles.join(" "))
+        if (!cell || String(cell).length < 3) continue
+        // salta numeri, ruoli singoli P D C A, nomi squadra
+        if (/^[0-9]+$/.test(String(cell).trim())) continue
+        if (/^[PDCA]$/i.test(String(cell).trim())) continue
+        if (String(cell).length > 30) continue
+        addPlayer(String(cell))
       }
     }
   }

@@ -404,7 +404,58 @@ function PlayerAvatar({ player, className }: { player: Player; className: string
     </span>
   )
 }
-function getPlayerLineupReasons(player: Player, isRecommendedStarter: boolean,
+function getPlayerLineupReasons(player: Player, isRecommendedStarter: boolean, strongerAlternative?: Player) {
+  const reasons: string[] = []
+  const recentMatches = player.recentMatches?? []
+  const recentAverage = getRecentFormAverage(player)
+  const roleReason: Record<Position, string> = {
+    P: "Tra i pali può puntare a una prestazione utile per il voto e a mantenere la porta inviolata.",
+    D: "In difesa può offrire una base per il voto e cercare un bonus sulle palle inattive.",
+    C: "A centrocampo può contribuire al voto e trovare spazio per inserimenti o assist.",
+    A: "In attacco può trasformare tiri e occasioni in un bonus utile alla squadra.",
+  }
+  const unavailableReason = /statistiche non disponibili|non sono state trovate|nessun dato|nessuna informazione|motivazione non disponibile/i.test(player.reason.trim())
+  if (!isRecommendedStarter) {
+    if (player.inj) reasons.push("Non consigliato titolare: risulta infortunato; verifica le ultime notizie prima di inserirlo.")
+    if (player.suspended) reasons.push("Non consigliato titolare: risulta squalificato per la prossima gara.")
+    if (!isUnavailable(player) && player.titolarita < 60) reasons.push(`La titolarità stimata è solo del ${player.titolarita}%: il rischio di pochi minuti o di non prendere voto è elevato.`)
+    else if (!isUnavailable(player) && player.titolarita < 80) reasons.push(`La titolarità stimata è del ${player.titolarita}%: il minutaggio è meno sicuro rispetto a un titolare fisso.`)
+    if (!isUnavailable(player) && recentAverage!== undefined && recentAverage < 6) {
+      reasons.push(`Nelle ultime ${recentMatches.length} ${recentMatches.length === 1? "partita ha" : "partite ha"} una media voto di ${recentAverage.toFixed(2)}: la forma recente non offre una garanzia sufficiente.`)
+    }
+    if (strongerAlternative) {
+      reasons.push(`Nel modulo scelto il posto è assegnato a ${strongerAlternative.name}: la sua valutazione attesa, che considera media stagionale, ultime tre partite e titolarità, è superiore (${getExpectedPlayerValue(strongerAlternative).toFixed(2)} contro ${getExpectedPlayerValue(player).toFixed(2)}).`)
+    }
+    if (!reasons.length) reasons.push("La panchina dipende dai posti disponibili nel modulo scelto: gli altri titolari hanno un profilo complessivo più adatto per questa formazione.")
+    if (recentAverage!== undefined && recentAverage >= 6) {
+      reasons.push(`La forma resta positiva: media ${recentAverage.toFixed(2)} nelle ultime ${recentMatches.length} ${recentMatches.length === 1? "partita" : "partite"}; può essere una prima alternativa dalla panchina.`)
+    }
+    return reasons
+  }
+  reasons.push(!unavailableReason && player.reason.trim()? player.reason : roleReason[player.position])
+  reasons.push(player.titolarita >= 80
+  ? `Titolarità stimata alta (${player.titolarita}%): aumenta la probabilità di minutaggio e di voto. `
+    : player.titolarita >= 60
+    ? `Titolarità stimata al ${player.titolarita}%: il potenziale giustifica la scelta, con un po' di rischio sul minutaggio. `
+      : `Titolarità stimata al ${player.titolarita}%: è una scommessa, consigliata solo se le alternative sono limitate.`)
+  if (recentAverage!== undefined) {
+    const recentDetail = recentMatches.map((match) => `G${match.matchday} ${match.rating.toFixed(1)}`).join(" · ")
+    const trend = recentAverage >= player.mv + 0.2
+    ? "in crescita rispetto alla media stagionale"
+      : recentAverage <= player.mv - 0.2
+      ? "in calo rispetto alla media stagionale"
+        : "in linea con la media stagionale"
+    reasons.push(`Forma recente: ${recentDetail} · media ${recentAverage.toFixed(2)}, ${trend}. I voti delle ultime tre partite pesano per metà nel consiglio di formazione.`)
+  }
+  const stats = player.officialStats
+  if (stats?.appearances!== undefined) {
+    reasons.push(`In stagione ha raccolto ${stats.appearances} ${stats.appearances === 1? "presenza" : "presenze"}${stats.mv!== undefined? ` con media voto ${stats.mv.toFixed(2)}` : ""}${stats.goals? ` e ${stats.goals} ${stats.goals === 1? "gol" : "gol"}` : ""}${stats.assists? ` più ${stats.assists} ${stats.assists === 1? "assist" : "assist"}` : ""}.`)
+  }
+  if (player.opponent && player.opponent!== "—") reasons.push(`Prossimo avversario: ${player.opponent}.`)
+  if (isUnavailable(player)) reasons.push("Attenzione: la disponibilità va verificata prima di confermarlo in formazione.")
+  return reasons
+}
+
 function PlayerModal({ player, onClose, lineup, mode }: { player: Player; onClose: () => void; lineup: Lineup; mode: Mode }) {
   const isRecommendedStarter = Object.values(lineup).flat().some((starter) => starter.id === player.id)
   const isRisk = player.titolarita < 60 || isUnavailable(player)

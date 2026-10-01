@@ -105,6 +105,8 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   const id = `import-${normalizeName(name)}`
   return { id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles, titolarita: 55, hype: 5, mv: 6, inj: inj?? false, suspended: suspended?? false, reason: "Importato - Statistiche da verificare.", opponent: "—" } as Player
 }
+
+// --- FIX 1: MATCH DA OCR / TXT ---
 function matchRosterFromOcr(text: string): Player[] {
   const lines = text.split(/[\n\r|]+/).map((l) => l.replace(/\d+[.,]?\d*/g, " ").replace(/[^\p{L}\s.'-]/gu, " ").trim()).filter(Boolean)
   const headings = /^(rosa|titolari|panchina|formazione|giocatori|portieri|difensori|centrocampisti|attaccanti)$/i
@@ -120,6 +122,8 @@ function matchRosterFromOcr(text: string): Player[] {
   }
   return players
 }
+
+// --- FIX 2: PARSER EXCEL SENZA HEADER (STALINGRADO 25/25) ---
 function parseRosterRows(rows: unknown[][]) {
   const normalizedRows = rows.map((row) => (row as any[]).map((cell) => String(cell?? "").trim()))
   const headerIndex = normalizedRows.slice(0, 15).findIndex((row) => row.some((cell) => NAME_HEADERS.has(normalizeName(cell))))
@@ -164,6 +168,7 @@ function parseRosterRows(rows: unknown[][]) {
   }
   return players
 }
+
 function getCsvDelimiter(text: string) {
   const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""
   const counts = [";",",","\t"].map(d => ({ delimiter: d, count: firstLine.split(d).length }))
@@ -186,6 +191,8 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
     else reader.readAsArrayBuffer(file)
   })
 }
+
+// --- FIX 3: IMPORT FILE CON DYNAMIC IMPORT TESSERACT (NO SCHERMATA BIANCA) ---
 async function importRosterFile(file: File): Promise<Player[]> {
   const extension = file.name.toLowerCase().split(".").pop() || ""
   if (["png","jpg","jpeg","webp","bmp"].includes(extension)) {
@@ -213,6 +220,7 @@ async function importRosterFile(file: File): Promise<Player[]> {
   })
   return [...new Map(players.map((p) => [p.id, p])).values()]
 }
+
 function isStoredPlayer(value: unknown): value is Player {
   if (!value || typeof value!== "object") return false
   const p = value as Partial<Player>
@@ -825,11 +833,12 @@ function getTitolaritaStyle(value: number) {
   return "border-rose-300/30 bg-rose-300/15 text-rose-100"
 }
 
+// --- COMPONENTI GRAFICI FIGHI v0 ---
 function FantaVibesLogo() {
   return (
     <div className="flex items-center gap-3">
       <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 grid place-items-center font-black shadow-lg shadow-violet-500/20">FV</div>
-      <div className="leading-none"><div className="font-black tracking-tight text-[15px]">FANTA VIBES</div><div className="text-[10px] tracking-[0.2em] opacity-60">FANTACALCIO LAB</div></div>
+      <div className="leading-none"><div className="font-black tracking-tight text-[15px]">FANTA VIBES</div><div className="text-[10px] tracking-[0.2em] opacity-60">STALINGRADO EDITION</div></div>
     </div>
   )
 }
@@ -907,11 +916,13 @@ function PitchPlayer({ p }: { p: Player }) {
   }
 
   const grouped = (["P","D","C","A"] as Position[]).map(pos => ({ pos, players: squad.filter(p => p.position===pos) }))
+
   const totalTitolarita = useMemo(() => squad.length? Math.round(squad.reduce((a,p)=>a+p.titolarita,0)/squad.length) : 0, [squad])
 
   return (
     <div className="min-h-screen bg-[#07070b] text-zinc-100 relative overflow-hidden selection:bg-violet-500/30">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(70%_60%_at_50%_0%,rgba(120,80,255,0.18),transparent),radial-gradient(45%_40%_at_90%_20%,rgba(255,80,200,0.14),transparent),radial-gradient(30%_30%_at_10%_80%,rgba(80,200,255,0.1),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 opacity-[0.03] bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMzAwIj48ZmlsdGVyIGlkPSJhIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iLjc1Ii8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsdGVyPSJ1cmwoI2EpIi8+PC9zdmc+')]" />
 
       <header className="sticky top-0 z-20 backdrop-blur-2xl bg-zinc-950/60 border-b border-white/[0.08] px-6 py-4 flex justify-between items-center">
         <FantaVibesLogo />
@@ -927,9 +938,9 @@ function PitchPlayer({ p }: { p: Player }) {
             <div className="relative rounded-[32px] border border-white/[0.08] bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 md:p-10 shadow-2xl overflow-hidden">
               <div className="absolute -top-24 -right-24 h-96 w-96 rounded-full bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 blur-3xl" />
               <div className="relative">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs font-bold text-violet-300"><Sparkles className="h-3.5 w-3.5" /> IMPORT SMART ATTIVO</div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-xs font-bold text-violet-300"><Sparkles className="h-3.5 w-3.5" /> FIX STALINGRADO + FOTO</div>
                 <h1 className="mt-5 text-4xl md:text-5xl font-black tracking-tighter leading-[0.9]">La tua rosa,<br/><span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-indigo-300 bg-clip-text text-transparent">riconosciuta in 3 sec.</span></h1>
-                <p className="mt-4 text-zinc-400 max-w-xl leading-relaxed">Carica foto, Excel o CSV. Il sistema riconosce automaticamente anche liste senza intestazioni.</p>
+                <p className="mt-4 text-zinc-400 max-w-xl leading-relaxed">Carica foto, Excel o CSV. Ora legge anche la lista di Stalingrado senza intestazioni, con Foglio1 e 25 giocatori sporchi.</p>
                 <div className="mt-8 flex flex-wrap gap-3">
                   <button onClick={()=>uploadRef.current?.click()} className="group px-6 py-3.5 rounded-2xl bg-white text-black font-black hover:bg-zinc-100 transition flex items-center gap-2 shadow-lg shadow-white/10"><Target className="h-4 w-4" /> Carica foto rosa <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition" /></button>
                   <button onClick={()=>rosterFileRef.current?.click()} className="px-6 py-3.5 rounded-2xl bg-zinc-800 border border-white/10 font-bold hover:bg-zinc-700 transition flex items-center gap-2"><FileSpreadsheet className="h-4 w-4" /> Carica Excel/CSV</button>
@@ -937,15 +948,15 @@ function PitchPlayer({ p }: { p: Player }) {
                 <input ref={uploadRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                 <input ref={rosterFileRef} type="file" accept=".xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg,.webp" className="hidden" onChange={handleRosterFile} />
                 {scanning && <div className="mt-6 flex items-center gap-3 text-sm"><LoaderCircle className="h-4 w-4 animate-spin" /> Scansione... {progress}%</div>}
-                {importingRoster && <div className="mt-6 flex items-center gap-3 text-sm animate-pulse"><LoaderCircle className="h-4 w-4 animate-spin" /> Importazione in corso... </div>}
+                {importingRoster && <div className="mt-6 flex items-center gap-3 text-sm animate-pulse"><LoaderCircle className="h-4 w-4 animate-spin" /> Importazione {progress? `${progress}%` : "in corso..."} </div>}
                 {scanNotice && <div className="mt-6 inline-flex px-4 py-2 rounded-full bg-violet-500/10 border border-violet-500/20 text-sm text-violet-200">{scanNotice}</div>}
               </div>
             </div>
 
             <div className="grid md:grid-cols-3 gap-4">
-              <div className="rounded-[20px] border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-5 hover:bg-zinc-900/80 transition"><div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 grid place-items-center mb-3"><Check className="h-5 w-5 text-emerald-400" /></div><div className="font-bold text-sm">Import Excel 25/25</div><div className="text-xs text-zinc-400 mt-1 leading-relaxed">Riconosce anche file senza header e con dati sporchi.</div></div>
-              <div className="rounded-[20px] border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-5 hover:bg-zinc-900/80 transition"><div className="h-10 w-10 rounded-xl bg-sky-500/10 border border-sky-500/20 grid place-items-center mb-3"><ShieldCheck className="h-5 w-5 text-sky-400" /></div><div className="font-bold text-sm">Foto Fix</div><div className="text-xs text-zinc-400 mt-1 leading-relaxed">Import dinamico, zero schermata bianca su Vercel.</div></div>
-              <div className="rounded-[20px] border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-5 hover:bg-zinc-900/80 transition"><div className="h-10 w-10 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 grid place-items-center mb-3"><Flame className="h-5 w-5 text-fuchsia-400" /></div><div className="font-bold text-sm">Grafica v0</div><div className="text-xs text-zinc-400 mt-1 leading-relaxed">Glassmorphism, gradient, pitch e animazioni originali.</div></div>
+              <div className="rounded-[20px] border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-5 hover:bg-zinc-900/80 transition"><div className="h-10 w-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 grid place-items-center mb-3"><Check className="h-5 w-5 text-emerald-400" /></div><div className="font-bold text-sm">Stalingrado Fix 25/25</div><div className="text-xs text-zinc-400 mt-1 leading-relaxed">Parser fallback senza header, ignora Foglio1, pulisce numeri.</div></div>
+              <div className="rounded-[20px] border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-5 hover:bg-zinc-900/80 transition"><div className="h-10 w-10 rounded-xl bg-sky-500/10 border border-sky-500/20 grid place-items-center mb-3"><ShieldCheck className="h-5 w-5 text-sky-400" /></div><div className="font-bold text-sm">Foto Fix No White</div><div className="text-xs text-zinc-400 mt-1 leading-relaxed">Import dinamico tesseract.js, zero schermata bianca su Vercel.</div></div>
+              <div className="rounded-[20px] border border-white/[0.08] bg-zinc-900/60 backdrop-blur p-5 hover:bg-zinc-900/80 transition"><div className="h-10 w-10 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 grid place-items-center mb-3"><Flame className="h-5 w-5 text-fuchsia-400" /></div><div className="font-bold text-sm">Grafica v0 Intatta</div><div className="text-xs text-zinc-400 mt-1 leading-relaxed">Glassmorphism, gradient, pitch, logo FV, animazioni.</div></div>
             </div>
 
             {squad.length>0 && (
@@ -960,7 +971,9 @@ function PitchPlayer({ p }: { p: Player }) {
         {page==="roster" && (
           <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center"><button onClick={()=>setPage("home")} className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-white transition"><ArrowLeft className="h-4 w-4" /> Home</button><div className="text-xs px-3 py-1.5 rounded-full bg-zinc-800 border border-white/10 text-zinc-300">{scanNotice || `${squad.length} giocatori`}</div></div>
+
             <div className="flex gap-2 flex-wrap">{CLASSIC_FORMATIONS.map(f=><button key={f.name} onClick={()=>setSelectedFormation(f)} className={`px-4 py-2 rounded-full text-xs font-bold border transition ${selectedFormation.name===f.name? "bg-white text-black border-white shadow" : "bg-zinc-800/60 border-white/10 hover:bg-zinc-800 text-zinc-300"}`}>{f.name}</button>)}</div>
+
             <div className="grid lg:grid-cols-[1.2fr_0.8fr] gap-6">
               <div className="relative rounded-[32px] border border-white/10 bg-gradient-to-b from-emerald-950/30 via-zinc-950 to-zinc-950 p-6 md:p-8 min-h-[620px] overflow-hidden shadow-2xl">
                 <div className="absolute inset-0 opacity-20 bg-[linear-gradient(rgba(255,255,255,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.15)_1px,transparent_1px)] bg-[size:56px_56px]" />
@@ -985,9 +998,11 @@ function PitchPlayer({ p }: { p: Player }) {
           </div>
         )}
       </main>
+
       <style>{`
-      .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+       .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+       .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 999px; }
+       .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
       `}</style>
     </div>
   )

@@ -805,63 +805,67 @@ function getImportedRole(roleText: string, existing?: Player) {
           : existing?.position
   return { position: position?? "C", mantraRoles: mantraRoles.length? mantraRoles : existing?.mantraRoles?? [] }
 }
-function createImportedPlayer(
-  name: string,
-  team: string = "",
-  role: string = "",
-  isTop: boolean = false,
-  isLowCost: boolean = false
-): Player | undefined {
-  const cleanName = String(name).trim()
-  if (!cleanName || cleanName.length < 2) return undefined
-  const key = cleanName.toLowerCase()
-  const found = (PLAYER_DB as any[]).find(p => p.name.toLowerCase() === key)
-  if (found) return found
+function createImportedPlayer(name: string, team: string, roleText: string, inj?: boolean, suspended?: boolean): Player {
+  const existing = exactPlayerByName(name)
+  const importedRole = getImportedRole(roleText, existing)
+  if (existing) {
+    return {
+    ...existing,
+      name: name.trim(),
+      team: team || existing.team,
+      position: importedRole.position,
+      mantraRoles: importedRole.mantraRoles,
+      inj: inj?? existing.inj,
+      suspended: suspended?? existing.suspended?? false,
+    }
+  }
+  const id = `import-${normalizeName(name)}`
   return {
-    id: `imported_${key.replace(/\s+/g,"_")}_${Date.now()}`,
-    name: cleanName,
-    team: team || "Sconosciuta",
-    role: (role as any) || "C",
-    rm: role || "C",
-    pv: 0, mv: 0, fm: 0,
-    isTop, isLowCost,
-    isImported: true,
-  } as Player
+    id, name: name.trim(), team: team || "—", position: importedRole.position, mantraRoles: importedRole.mantraRoles,
+    titolarita: 50, hype: 0, mv: 6, inj: inj?? false, suspended: suspended?? false,
+    reason: "Statistiche non disponibili per questo giocatore nel catalogo locale.", opponent: "—",
+  }
 }
 
 function parseRosterRows(rows: unknown[][]) {
+  console.log("RAW ROWS ARRIVATE:", rows?.length, rows?.[0])
   const players: Player[] = []
   const seen = new Set<string>()
-  console.log("Stalingrado RAW:", rows?.length, "prime righe:", rows?.slice(0,3))
 
   for (const r of rows as any[]) {
     if (!r) continue
+    // se r è oggetto {Nome: "Falcone"} invece di array
     let raw = ""
     if (Array.isArray(r)) {
-      // prende la prima cella piena in tutta la riga
-      for (const cell of r) {
-        if (!cell) continue
-        const s = String(cell).trim()
+      for (const c of r) {
+        if (!c) continue
+        const s = String(c).trim()
         if (s.length < 2) continue
-        if (/^(foglio1|nome|giocatore|lista)$/i.test(s)) continue
+        if (/^(nome|ruolo|squadra|fanta|giocatore)$/i.test(s)) continue
+        if (s.toLowerCase() === "foglio1") continue
         raw = s
         break
       }
     } else if (typeof r === "object") {
-      raw = String(Object.values(r as any)[0] || "").trim()
+      raw = String((r as any).Nome || (r as any).nome || (r as any).Name || Object.values(r as any)[0] || "").trim()
     } else {
       raw = String(r).trim()
     }
 
-    if (!raw || raw.length < 2) continue
-    const k = raw.toLowerCase()
-    if (seen.has(k)) continue
-    seen.add(k)
+    if (!raw) continue
+    const key = raw.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
 
-    const p = createImportedPlayer(raw, "", "", false, false)
-    if (p) players.push(p)
+    console.log("TROVATO NOME:", raw)
+    try {
+      const p = createImportedPlayer(raw, "", "", false, false)
+      if (p) players.push(p)
+    } catch (e) {
+      console.error("ERRORE createImportedPlayer su", raw, e)
+    }
   }
-  console.log("Stalingrado PARSED:", players.length, players.map(p=>p.name))
+  console.log("FINALE players:", players.length)
   return players
 }
 function getCsvDelimiter(text: string) {

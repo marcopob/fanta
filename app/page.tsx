@@ -231,31 +231,24 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
   }
 }
 function parseRosterRows(rows: unknown[][]) {
-  const normalizedRows = rows.map((row) => (Array.isArray(row)? row.map((cell) => String(cell?? "").trim()).filter(Boolean) : []))
   const players: Player[] = []
   const seen = new Set<string>()
-  const add = (raw: string) => {
-    const name = raw.replace(/^\d+[\.\)]\s*|\s*\d+$/g,"").trim()
-    if (name.length < 3 || name.length > 40) return
-    if (/^[0-9\W]+$/.test(name)) return
-    if (/^(giocatore|nome|ruolo|team|squadra|rosa|lista)$/i.test(name)) return
-    const key = normalizeName(name)
-    if (seen.has(key)) return
-    seen.add(key)
-    players.push(createImportedPlayer(name, "", ""))
-  }
-  for (const row of normalizedRows) {
-    for (const cell of row) {
-      if (!cell) continue
-      const s = String(cell).trim()
-      if (s.length < 3) continue
-      if (/^[PDCAM]+$/i.test(s) && s.length <= 3) continue
-      if (/^\d+$/.test(s)) continue
-      if (s.includes("@") || s.includes("€")) continue
-      add(s)
+  for (const r of rows as any[]) {
+    if (!Array.isArray(r)) continue
+    for (let raw of r) {
+      let name = String(raw ?? "").trim()
+      if (name.length < 2) continue
+      if (/^(nome|giocatore|ruolo|squadra|team|rosa)$/i.test(name)) continue
+      name = name.replace(/^\d+[\.\)\-\s]+/, "").trim()
+      if (name.length < 3) continue
+      const key = name.toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      players.push(createImportedPlayer(name, "", ""))
     }
   }
   return players
+}
 }
 function getCsvDelimiter(text: string) {
   const firstLine = text.replace(/^\uFEFF/, "").split(/\r?\n/, 1)[0]?? ""

@@ -740,7 +740,8 @@ export default function Home() {
       setImportingRoster(false)
       if (rosterFileRef.current) rosterFileRef.current.value = ""
     }
-  }async function refreshOfficialRatings() {
+  }
+  async function refreshOfficialRatings() {
     if (!squad.length || syncingRatings) return
     setSyncingRatings(true)
     setRatingNotice("")

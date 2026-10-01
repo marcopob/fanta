@@ -830,31 +830,33 @@ function createImportedPlayer(name: string, team: string, roleText: string, inj?
 function parseRosterRows(rows: unknown[][]) {
   const players: Player[] = []
   const seen = new Set<string>()
+  
   for (const r of rows as any[]) {
-    if (!r ||!Array.isArray(r)) continue
-    // prende la prima stringa lunga >=2 che non sia header
-    let rawName = ""
+    if (!r || !Array.isArray(r)) continue
+    
+    let name = ""
+    // controlla TUTTE le colonne della riga
     for (const cell of r) {
       if (!cell) continue
       const s = String(cell).trim()
       if (s.length < 2) continue
-      if (/^(nome|ruolo|squadra|id|rm|pv|mv|fm|por|dc|dd|ds|e|m|c|w|t|pc|r|giocatore|lista)$/i.test(s)) continue
-      rawName = s
-      break
+      // salta header tipo "Nome", "Ruolo", "Squadra", "ID" ecc
+      if (/^(nome|ruolo|squadra|id|rm|pv|mv|fm|por|dc|dd|ds|e|m|c|w|t|pc|r|giocatore|lista|fanta)$/i.test(s)) continue
+      // se è un numero puro, salta
+      if (/^\d+$/.test(s)) continue
+      name = s
+      break // trovato il primo nome valido, stop
     }
-    // fallback: se riga è tipo ["Falcone"] -> rawName = Falcone
-    if (!rawName && r.length === 1) rawName = String(r[0] || "").trim()
-    if (!rawName || rawName.length < 2) continue
-
-    const key = rawName.toLowerCase()
+    
+    if (!name) continue
+    const key = name.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-
-    // cerca nei 599, se non c'è lo crea lo stesso
-    const p = createImportedPlayer(rawName, "", "", false, false)
+    
+    const p = createImportedPlayer(name, "", "", false, false)
     if (p) players.push(p)
   }
-  console.log("Stalingrado trovati:", players.length, players.map(p=>p.name))
+  
   return players
 }
 function getCsvDelimiter(text: string) {

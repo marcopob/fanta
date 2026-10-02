@@ -75,9 +75,6 @@ type RecentMatchRating = {
 }
 type Formation = { name: string; defense: number; midfield: number; attack: number }
 type Lineup = Record<Position, Player[]>
-function getAvatarUrl(name: string): string {
-  return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(name)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf&radius=10`
-}
 const STORAGE_KEY = "fanta-vibes-v6"
 const LEGACY_STORAGE_KEY = "fanta-vibes-v4"
 const PLAYER_DB: CatalogPlayer[] = [
@@ -1129,12 +1126,15 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
   )
 }
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
+  const initials = player.name.split(/\s+/).map((p: string) => p[0]).join("").slice(0,2).toUpperCase()
   return (
-    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0c1e] ${className}`}>
+    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-[12px] bg-[#1e2a4a] font-black text-white/70 ${className}`}>
+      <span className="absolute inset-0 flex items-center justify-center text-[11px]">{initials}</span>
       <img
-        src={getAvatarUrl(player.name)}
+        src={`/players/avatars/${player.id}.png`}
         alt={player.name}
         className="absolute inset-0 h-full w-full object-cover"
+        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none' }}
       />
     </span>
   )

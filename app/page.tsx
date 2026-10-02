@@ -1030,7 +1030,7 @@ function matchRosterFromOcr(text: string): Player[] {
       if (seen.has(norm)) continue
       const surname = normalizeName((p.name.split(" ").pop()||"").replace(/\./g,""))
       if (surname.length < 3) continue
-      if (fullNorm.includes(surname)) {
+      if (fullNorm.includes(surname) && surname.length >= 5) {
         seen.add(norm)
         const pl = createImportedPlayer(p.name, "", "")
         if (pl) players.push(pl)

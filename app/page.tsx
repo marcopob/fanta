@@ -981,25 +981,63 @@ async function importRosterFile(file: File): Promise<Player[]> {
   })
   return [...new Map(players.map((player) => [player.id, player])).values()]
 }
+function levenshtein(a: string, b: string): number {
+  const m = Array(b.length+1).fill(0).map((_,i)=>i)
+  for(let i=1;i<=a.length;i++){
+    let prev=m[0]; m[0]=i
+    for(let j=1;j<=b.length;j++){
+      const tmp=m[j]
+      m[j]=Math.min(m[j]+1, m[j-1]+1, prev + (a[i-1]===b[j-1]?0:1))
+      prev=tmp
+    }
+  }
+  return m[b.length]
+}
+
 function matchRosterFromOcr(text: string): Player[] {
   const players: Player[] = []
   const seen = new Set<string>()
-  const lines = text.split(/\r?\n/)
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
-    if (line.length < 3 || line.length > 60) continue
-    const cleaned = line.replace(/^\d+[\.\)\-\s]+/, "").replace(/[^a-zA-ZÀ-ÿ\s']/g, " ").trim()
-    const words = cleaned.split(/\s+/).filter(w => w.length >= 2)
-    if (words.length >= 2 && words.length <= 4) {
-      const name = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ")
-      const key = name.toLowerCase().replace(/\s+/g, "")
-      if (key.length < 3 || seen.has(key)) continue
-      seen.add(key)
-      const player = createImportedPlayer(name, "", "")
-      if (player) players.push(player)
+  const fullNorm = normalizeName(text)
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(Boolean)
+
+  for (const raw of lines) {
+    const cleaned = raw.replace(/^\W*\d+\W*/,"").replace(/[^a-zA-ZÀ-ÿ'\.\s]/g," ").replace(/\s+/g," ").trim()
+    if (cleaned.length < 2) continue
+    const cand = cleaned.split(/\s+/).slice(0,3).join(" ")
+    const key = normalizeName(cand)
+    if (!key || seen.has(key)) continue
+
+    let best: any = null
+    let bestDist = 99
+    for (const p of PLAYER_DB) {
+      const pn = normalizeName(p.name)
+      const pnNoDot = normalizeName(p.name.replace(/\./g,""))
+      const dist = Math.min(levenshtein(key, pn), levenshtein(key, pnNoDot))
+      if (key.includes(pn) || pn.includes(key) || dist <= 2) {
+        if (dist < bestDist) { bestDist = dist; best = p }
+      }
+    }
+    if (best &&!seen.has(normalizeName(best.name))) {
+      seen.add(normalizeName(best.name))
+      const pl = createImportedPlayer(best.name, "", "")
+      if (pl) players.push(pl)
     }
   }
-  return players
+
+  if (players.length < 25) {
+    for (const p of PLAYER_DB) {
+      const norm = normalizeName(p.name)
+      if (seen.has(norm)) continue
+      const surname = normalizeName((p.name.split(" ").pop()||"").replace(/\./g,""))
+      if (surname.length < 3) continue
+      if (fullNorm.includes(surname)) {
+        seen.add(norm)
+        const pl = createImportedPlayer(p.name, "", "")
+        if (pl) players.push(pl)
+      }
+    }
+  }
+  return [...new Map(players.map(pl=>[pl.id, pl])).values()]
 }
 function isStoredPlayer(value: unknown): value is Player {
   if (!value || typeof value !== "object") return false

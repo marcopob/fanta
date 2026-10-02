@@ -1000,31 +1000,44 @@ async function importRosterFile(file: File): Promise<Player[]> {
 function matchRosterFromOcr(text: string): Player[] {
   const players: Player[] = []
   const seen = new Set<string>()
-  // split anche su numeri attaccati tipo "1 Grabara"
+  const fullNorm = normalizeName(text)
+
+  // METODO 1: per riga come prima
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
   for (const raw of lines) {
-    // togli tutto quello che non è nome: numeri, Q. att. FVMp ecc
-    const cleaned = raw.replace(/^\W*\d+.*?[A-Z]?\.?\s+/, " ").replace(/[^a-zA-ZÀ-ÿ'\.\s]/g, " ").replace(/\s+/g, " ").trim()
-    if (cleaned.length < 3 || cleaned.length > 30) continue
-    // prova le prime 2-3 parole (es. "Ederson D.S." "Martinez Jo.")
-    const nameCandidate = cleaned.split(/\s+/).slice(0, 3).join(" ")
-    const key = normalizeName(nameCandidate)
-    if (key.length < 3 || seen.has(key)) continue
-    
-    // match largo: cerca nel DB anche con punti e iniziali
+    const cleaned = raw.replace(/[^a-zA-ZÀ-ÿ'\.\s]/g, " ").replace(/\s+/g, " ").trim()
+    if (cleaned.length < 3) continue
+    const candidate = cleaned.split(/\s+/).slice(0, 3).join(" ")
+    const key = normalizeName(candidate)
+    if (seen.has(key)) continue
     const found = PLAYER_DB.find(p => {
       const pn = normalizeName(p.name)
-      return pn === key || key.includes(pn) || pn.includes(key) || normalizeName(p.name.replace(/\./g,"")) === key
-    }) || PLAYER_DB.find(p => {
-      // prova solo cognome per casi tipo "Di Lorenzo"
-      const surname = normalizeName(p.name.split(" ").pop()||"")
-      return surname.length > 3 && key.includes(surname)
+      return pn === key || pn.includes(key) || key.includes(pn)
     })
-    
-    if (!found) continue
-    seen.add(normalizeName(found.name))
-    players.push(createImportedPlayer(found.name, "", ""))
+    if (found) {
+      seen.add(normalizeName(found.name))
+      players.push(createImportedPlayer(found.name, "", ""))
+    }
   }
+
+  // METODO 2: se ancora < 25, cerca cognome in tutto il testo (prende quelli che riga ha perso)
+  if (players.length < 20) {
+    for (const p of PLAYER_DB) {
+      const normName = normalizeName(p.name)
+      const surname = normalizeName(p.name.split(" ").pop() || "")
+      if (surname.length < 4) continue
+      if (seen.has(normName)) continue
+      // se cognome presente nel testo OCR completo
+      if (fullNorm.includes(surname) || fullNorm.includes(normName)) {
+        seen.add(normName)
+        players.push(createImportedPlayer(p.name, "", ""))
+      }
+    }
+  }
+
+  console.log("OCR TROVATI:", players.length)
+  return [...new Map(players.map(pl => [pl.id, pl])).values()]
+}
   
   console.log("OCR TROVATI:", players.length, players.map(p=>p.name))
   return players

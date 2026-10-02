@@ -75,6 +75,9 @@ type RecentMatchRating = {
 }
 type Formation = { name: string; defense: number; midfield: number; attack: number }
 type Lineup = Record<Position, Player[]>
+function getAvatarUrl(name: string): string {
+  return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(name)}&backgroundColor=b6e3f4,c0aede,d1d4f9,ffd5dc,ffdfbf&radius=10`
+}
 const STORAGE_KEY = "fanta-vibes-v6"
 const LEGACY_STORAGE_KEY = "fanta-vibes-v4"
 const PLAYER_DB: CatalogPlayer[] = [
@@ -704,7 +707,7 @@ const POSITION_COLORS: Record<Position, string> = {
 function normalizeName(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "")
 }
-function isUnavailable(player: Player) {
+function isUnavailable(player: Player) { 
   return player.inj || player.suspended === true
 }
 function getAvailability(player: Player) {
@@ -1126,12 +1129,14 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
   )
 }
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
-  const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
-  const hasPortrait = PLAYER_DB.some((catalogPlayer) => catalogPlayer.id === player.id)
   return (
-    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-[#122b20] font-black text-white ${className}`} aria-hidden="true">
-      <span className="absolute inset-0 flex items-center justify-center">{initials}</span>
-      {hasPortrait && <Image src={`/players/avatars/${player.id}.png`} alt="" fill sizes="64px" className="scale-125 object-cover" />}
+    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0c1e] ${className}`}>
+      <img
+        src={getAvatarUrl(player.name)}
+        alt={player.name}
+        className="absolute inset-0 h-full w-full object-cover"
+        loading="lazy"
+      />
     </span>
   )
 }

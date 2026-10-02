@@ -840,20 +840,48 @@ function buildPlayerFromCatalog(catalog: CatalogPlayer, overrides: Partial<Playe
   }
 }
 
-function createImportedPlayer(name: string, team: string, roleText: string, inj?: boolean, suspended?: boolean): Player {
-  const cleanedName = name.replace(/^[\s\d.#\-_]+|[\s\d.#\-_]+$/g, "").trim()
-  if (!cleanedName) return null as any
-  const exact = exactPlayerByName(cleanedName)
-  const normalized = normalizeName(cleanedName)
-  const fuzzy =!exact? PLAYER_DB.find(p => {
-    const n = normalizeName(p.name)
-    return normalized.includes(n) || n.includes(normalized)
-  }) : undefined
-  const catalog = exact || fuzzy
-  if (catalog) {
-    return { id: catalog.id, name: catalog.name, team: team || catalog.team, position: catalog.position, mantraRoles: catalog.mantraRoles, titolarita: 70, hype: 5, mv: 6, inj: inj??false, suspended: suspended??false, reason: `Riconosciuto: ${catalog.team}`, opponent: "—", recentMatches: [], fantacalcioId: (catalog as any).fantacalcioId } as Player
+function createImportedPlayer(
+  name: string,
+  team: string = "",
+  role: string = "",
+  isTop: boolean = false,
+  isLowCost: boolean = false,
+): Player | undefined {
+  const cleanName = String(name).trim()
+  if (!cleanName || cleanName.length < 2) return undefined
+
+  const normalizedName = normalizeName(cleanName)
+  const found = PLAYER_DB.find((player) => normalizeName(player.name) === normalizedName)
+
+  if (found) {
+    const importedRole = getImportedRole(role, buildPlayerFromCatalog(found))
+    return buildPlayerFromCatalog(found, {
+      team: team || found.team,
+      position: importedRole.position,
+      mantraRoles: importedRole.mantraRoles.length ? importedRole.mantraRoles : found.mantraRoles,
+      reason: isTop ? "Giocatore riconosciuto nel database Fanta Vibes · profilo top." : "Giocatore riconosciuto nel database Fanta Vibes.",
+      hype: isTop ? 75 : 0,
+    })
   }
-  return { id: `import-${normalized}`, name: cleanedName, team: team||"—", position: "C", mantraRoles: [], titolarita: 55, hype: 5, mv: 6, inj: false, suspended: false, reason: "Importato", opponent: "—", recentMatches: [] } as Player
+
+  const importedRole = getImportedRole(role)
+  return {
+    id: `imported_${normalizedName}_${Date.now()}`,
+    name: cleanName,
+    team: team || "Sconosciuta",
+    position: importedRole.position,
+    mantraRoles: importedRole.mantraRoles.length ? importedRole.mantraRoles : [importedRole.position],
+    titolarita: 50,
+    hype: 0,
+    mv: 6,
+    inj: false,
+    suspended: false,
+    reason: isLowCost
+      ? "Statistiche non disponibili: giocatore importato dalla rosa · profilo low cost."
+      : "Statistiche non disponibili: giocatore importato dalla rosa.",
+    opponent: "—",
+    recentMatches: [],
+  }
 }
 
 function parseRosterRows(rows: unknown[][]) {
@@ -956,14 +984,21 @@ async function importRosterFile(file: File): Promise<Player[]> {
 function matchRosterFromOcr(text: string): Player[] {
   const players: Player[] = []
   const seen = new Set<string>()
-  const lines = text.split(/[\r\n]+/).map(l => l.replace(/[^a-zA-ZÀ-ÿ\s'.-]/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length >=3 && l.length <=50)
+  const lines = text.split(/\r?\n/)
   for (const rawLine of lines) {
-    if (/^(rosa|titolari|panchina|formazione|portieri|difensori|centrocampisti|attaccanti|lista|foglio1)$/i.test(rawLine)) continue
-    const cleaned = rawLine.replace(/^\d+[\.\)\- ]+/, "").trim()
+    const line = rawLine.trim()
+    if (line.length < 3 || line.length > 40) continue
+    // ELIMINA NUMERI E SIMBOLI
+    const cleaned = line.replace(/^\d+[\.\)\-\s]+/, "").replace(/[^a-zA-ZÀ-ÿ\s']/g, " ").trim()
+    if (!cleaned) continue
     const key = normalizeName(cleaned)
     if (seen.has(key)) continue
-    let player = createImportedPlayer(cleaned, "", "")
-    if (player) { seen.add(normalizeName(player.name)); players.push(player) }
+    // CERCA SOLO SE ESISTE NEL DB - così non inserisce nomi a caso
+    const found = PLAYER_DB.find(p => normalizeName(p.name) === key || normalizeName(p.name).includes(key) || key.includes(normalizeName(p.name)))
+    if (!found) continue
+    seen.add(key)
+    const player = createImportedPlayer(found.name, "", "")
+    if (player) players.push(player)
   }
   return players
 }
@@ -1053,23 +1088,13 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
     </section>
   )
 }
-function getAvatarUrl(player: Player): string {
-  const catalog = PLAYER_DB.find(c => c.id === player.id) || PLAYER_DB.find(c => normalizeName(c.name) === normalizeName(player.name))
-  if (catalog?.fantacalcioId) return `https://content.fantacalcio.it/web/img/player/${catalog.fantacalcioId}.png`
-  return `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(player.name)}&backgroundColor=b6e3f4,c0aede,d1d4f9`
-}
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
   const initials = player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
-  const avatarUrl = getAvatarUrl(player)
-  const hasLocal = PLAYER_DB.some((c) => c.id === player.id)
+  const hasPortrait = PLAYER_DB.some((catalogPlayer) => catalogPlayer.id === player.id)
   return (
-    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-[#122b20] font-black text-white ${className}`}>
-      <span className="absolute inset-0 flex items-center justify-center text-[10px]">{initials}</span>
-      {hasLocal? (
-        <Image src={`/players/avatars/${player.id}.png`} alt="" fill sizes="64px" className="scale-125 object-cover" onError={(e) => { (e.target as any).style.display = 'none' }} />
-      ) : (
-        <img src={avatarUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-      )}
+    <span className={`relative flex shrink-0 items-center justify-center overflow-hidden bg-[#122b20] font-black text-white ${className}`} aria-hidden="true">
+      <span className="absolute inset-0 flex items-center justify-center">{initials}</span>
+      {hasPortrait && <Image src={`/players/avatars/${player.id}.png`} alt="" fill sizes="64px" className="scale-125 object-cover" />}
     </span>
   )
 }

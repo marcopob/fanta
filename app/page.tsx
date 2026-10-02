@@ -943,21 +943,37 @@ function readBrowserFile(file: File, format: "text" | "arrayBuffer"): Promise<st
 }
 async function importRosterFile(file: File): Promise<Player[]> {
   const extension = file.name.toLowerCase().split(".").pop() || ""
-  if (["png","jpg","jpeg","webp","bmp"].includes(extension)) {
+   if (["png","jpg","jpeg","webp","bmp"].includes(extension)) {
     try {
-      const { createWorker } = await import('tesseract.js')
-      const worker = await createWorker()
-      await (worker as any).loadLanguage?.('ita+eng')
-      await (worker as any).initialize?.('ita+eng')
-      const ret = await (worker as any).recognize(file)
-      const text = ret.data?.text || ""
-      await (worker as any).terminate()
-      console.log("OCR text:", text)
+      const splitImage = async (file: File): Promise<string[]> => {
+        const img = await createImageBitmap(file)
+        const slices = img.height > 2000 ? 3 : img.height > 1200 ? 2 : 1
+        const h = Math.floor(img.height / slices)
+        const texts: string[] = []
+        const { createWorker } = await import('tesseract.js')
+        for (let i = 0; i < slices; i++) {
+          const canvas = document.createElement("canvas")
+          canvas.width = img.width
+          canvas.height = i === slices - 1 ? img.height - i*h : h
+          const ctx = canvas.getContext("2d")!
+          ctx.drawImage(img, 0, i*h, img.width, canvas.height, 0, 0, img.width, canvas.height)
+          const blob = await new Promise<Blob>(r => canvas.toBlob(b => r(b!), "image/png"))
+          const worker = await createWorker()
+          await (worker as any).loadLanguage?.('ita+eng')
+          await (worker as any).initialize?.('ita+eng')
+          const ret = await (worker as any).recognize(blob)
+          texts.push(ret.data?.text || "")
+          await (worker as any).terminate()
+        }
+        return texts
+      }
+      const allTexts = await splitImage(file)
+      const text = allTexts.join("\n")
+      console.log("OCR text lungo:", text)
       if (!text.trim()) return []
       return matchRosterFromOcr(text)
     } catch (e) {
       console.error("OCR error", e)
-      alert("Errore OCR: " + e)
       return []
     }
   }
@@ -984,22 +1000,33 @@ async function importRosterFile(file: File): Promise<Player[]> {
 function matchRosterFromOcr(text: string): Player[] {
   const players: Player[] = []
   const seen = new Set<string>()
-  const lines = text.split(/\r?\n/)
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
-    if (line.length < 3 || line.length > 40) continue
-    // ELIMINA NUMERI E SIMBOLI
-    const cleaned = line.replace(/^\d+[\.\)\-\s]+/, "").replace(/[^a-zA-ZÀ-ÿ\s']/g, " ").trim()
-    if (!cleaned) continue
-    const key = normalizeName(cleaned)
-    if (seen.has(key)) continue
-    // CERCA SOLO SE ESISTE NEL DB - così non inserisce nomi a caso
-    const found = PLAYER_DB.find(p => normalizeName(p.name) === key || normalizeName(p.name).includes(key) || key.includes(normalizeName(p.name)))
+  // split anche su numeri attaccati tipo "1 Grabara"
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  for (const raw of lines) {
+    // togli tutto quello che non è nome: numeri, Q. att. FVMp ecc
+    const cleaned = raw.replace(/^\W*\d+.*?[A-Z]?\.?\s+/, " ").replace(/[^a-zA-ZÀ-ÿ'\.\s]/g, " ").replace(/\s+/g, " ").trim()
+    if (cleaned.length < 3 || cleaned.length > 30) continue
+    // prova le prime 2-3 parole (es. "Ederson D.S." "Martinez Jo.")
+    const nameCandidate = cleaned.split(/\s+/).slice(0, 3).join(" ")
+    const key = normalizeName(nameCandidate)
+    if (key.length < 3 || seen.has(key)) continue
+    
+    // match largo: cerca nel DB anche con punti e iniziali
+    const found = PLAYER_DB.find(p => {
+      const pn = normalizeName(p.name)
+      return pn === key || key.includes(pn) || pn.includes(key) || normalizeName(p.name.replace(/\./g,"")) === key
+    }) || PLAYER_DB.find(p => {
+      // prova solo cognome per casi tipo "Di Lorenzo"
+      const surname = normalizeName(p.name.split(" ").pop()||"")
+      return surname.length > 3 && key.includes(surname)
+    })
+    
     if (!found) continue
-    seen.add(key)
-    const player = createImportedPlayer(found.name, "", "")
-    if (player) players.push(player)
+    seen.add(normalizeName(found.name))
+    players.push(createImportedPlayer(found.name, "", ""))
   }
+  
+  console.log("OCR TROVATI:", players.length, players.map(p=>p.name))
   return players
 }
 function isStoredPlayer(value: unknown): value is Player {

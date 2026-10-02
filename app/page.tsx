@@ -1129,14 +1129,42 @@ function FantaVibesIntro({ onEnter }: { onEnter: () => void }) {
   )
 }
 function PlayerAvatar({ player, className }: { player: Player; className: string }) {
+  const [src, setSrc] = React.useState(`/players/avatars/${player.id}.png`)
+  const [triedWeb, setTriedWeb] = React.useState(false)
+
   return (
     <span className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#0a0c1e] ${className}`}>
       <img
-        src={getAvatarUrl(player.name)}
+        src={src}
         alt={player.name}
         className="absolute inset-0 h-full w-full object-cover"
-        loading="lazy"
+        style={{ filter: 'contrast(1.15) saturate(1.4) brightness(1.05)' }}
+        onError={() => {
+          if (!triedWeb) {
+            setTriedWeb(true)
+            // Cerca foto vera su internet (TheSportsDB + fallback Wikipedia)
+            fetch(`https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p=${encodeURIComponent(player.name)}`)
+              .then(r => r.json())
+              .then(d => {
+                const p = d?.player?.[0]
+                const webImg = p?.strCutout || p?.strThumb || p?.strFanart1
+                if (webImg) {
+                  setSrc(webImg)
+                } else {
+                  // Fallback se non trova nulla: usa stile Diao vero (adventurer)
+                  setSrc(`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(player.name)}&backgroundColor=b6e3f4,c0aede,d1d4f9&radius=10`)
+                }
+              })
+              .catch(() => {
+                setSrc(`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(player.name)}&backgroundColor=b6e3f4,c0aede,d1d4f9&radius=10`)
+              })
+          } else {
+             setSrc(`https://api.dicebear.com/9.x/adventurer/svg?seed=${encodeURIComponent(player.name)}&backgroundColor=b6e3f4,c0aede,d1d4f9&radius=10`)
+          }
+        }}
       />
+      {/* filtro cartoon leggero */}
+      <span className="absolute inset-0 rounded-xl ring-1 ring-white/10" />
     </span>
   )
 }
